@@ -30,10 +30,11 @@ class BackendIntegrationTests(unittest.TestCase):
                 self.assertEqual(state['vitals']['bed_id'], '103')
                 event = client.get('/api/beds/103/events').json()[0]
                 self.assertIsNone(event['resolved_at'])
-                first = client.post(f'/api/events/{event["event_id"]}/resolve')
+                report = {'completed_actions': 'checked on patient', 'follow_up': 'monitor', 'notes': ''}
+                first = client.post(f'/api/events/{event["event_id"]}/resolve', json=report)
                 self.assertEqual(first.status_code, 200)
                 self.assertIsNotNone(first.json()['resolved_at'])
-                again = client.post(f'/api/events/{event["event_id"]}/resolve')
+                again = client.post(f'/api/events/{event["event_id"]}/resolve', json=report)
                 self.assertEqual(first.json()['resolved_at'], again.json()['resolved_at'])
                 self.assertNotIn(event['event_id'], [e['event_id'] for e in client.get('/api/beds/103/events').json()])
                 for jpeg in (b'\xff\xd8first\xff\xd9', b'\xff\xd8second\xff\xd9'):
@@ -48,7 +49,8 @@ class BackendIntegrationTests(unittest.TestCase):
     def test_existing_error_contracts_and_cors(self):
         with TestClient(app) as client:
             self.assertEqual(client.get('/api/beds/not-a-bed/events').status_code, 404)
-            self.assertEqual(client.post('/api/events/not-an-event/resolve').status_code, 404)
+            report = {'completed_actions': 'n/a', 'follow_up': 'n/a', 'notes': ''}
+            self.assertEqual(client.post('/api/events/not-an-event/resolve', json=report).status_code, 404)
             with self.assertRaises(WebSocketDisconnect) as error:
                 with client.websocket_connect('/ws/room/not-a-bed'):
                     pass

@@ -1,8 +1,9 @@
 # in-memory 資料存放，對應 API_CONTRACT.md
 #
-# 三種資料分開存：
+# 四種資料分開存：
 #   - _beds：床位靜態名冊 (BedInfo)，從 app/data/beds.csv 讀入，GET /api/beds 用
 #   - _vitals：每個床位最新一筆生理數據 (Vitals)
+#   - _postures：每個床位目前姿勢，board 算好直接傳過來，這裡只是存放/轉發，不做分類
 #   - _events：每個床位的事件列表 (WardAgentOutput)，resolved_at 為 None 代表 active。
 #     resolved 之後不會被清除（demo scope 不做 retention），但 GET /api/beds/{bed_id}/events
 #     只回傳還 active 的，resolved 的不會出現在查詢結果裡，也沒有其他方式能查到它們
@@ -24,6 +25,7 @@ from app.schemas import (
     EventLocation,
     EventState,
     OverviewUpdate,
+    Posture,
     Priority,
     Vitals,
     WardAgentOutput,
@@ -37,6 +39,7 @@ _CASE_REPORTS_JSON_PATH = Path(__file__).parent / "data" / "case_reports.json"
 
 _beds: dict[str, BedInfo] = {}
 _vitals: dict[str, Vitals] = {}
+_postures: dict[str, Optional[Posture]] = {}
 _events: dict[str, list[WardAgentOutput]] = {}
 
 
@@ -94,6 +97,7 @@ def seed_demo_data() -> None:
     """Demo 用假資料：床位名冊從 beds.csv 讀入，103 有一筆尚未處理的疑似跌倒事件當劇本。"""
     _beds.clear()
     _vitals.clear()
+    _postures.clear()
     _events.clear()
     _init_event_history_file()
     _init_case_reports_file()
@@ -103,6 +107,7 @@ def seed_demo_data() -> None:
     for bed in _load_beds_from_csv():
         _beds[bed.bed_id] = bed
         _events[bed.bed_id] = []
+        _postures[bed.bed_id] = None
         _vitals[bed.bed_id] = Vitals(
             bed_id=bed.bed_id,
             bp_systolic=120,
@@ -153,6 +158,14 @@ def set_vitals(
         spo2=spo2,
         ts=datetime.now(timezone.utc),
     )
+
+
+def get_posture(bed_id: str) -> Optional[Posture]:
+    return _postures.get(bed_id)
+
+
+def set_posture(bed_id: str, posture: Optional[Posture]) -> None:
+    _postures[bed_id] = posture
 
 
 def report_event(

@@ -20,6 +20,7 @@ EventState = Literal[
     "abnormal_vitals",
 ]
 EventLocation = Literal["in_bed", "out_of_bed", "chair", "near_door", "bathroom"]
+Posture = Literal["standing", "sitting", "lying", "raising_hand"]
 
 
 # ---------------------------------------------------------------------------
@@ -99,15 +100,19 @@ class RoomDetailUpdate(BaseModel):
     ts: datetime
     vitals: Vitals
     active_events: List[WardAgentOutput]
+    current_posture: Optional[Posture] = None
 
 
-class WebRTCSignal(BaseModel):
-    """/ws/room/{bed_id} 上的 WebRTC signaling 訊息，跟 state 訊息共用同一條連線"""
+class BoardPostureUpdate(BaseModel):
+    """Board -> backend：連到 /ws/room/{bed_id}?role=board 送上來的姿勢訊息。
 
-    type: Literal["webrtc_offer", "webrtc_answer", "webrtc_ice"]
+    影像不走這裡——demo 只有一床有真的攝影機，走 camera_stream.py 的全域 pipe
+    （/ws/camera/publish、/ws/camera/view），不分 bed_id。這裡只傳 board 算好的姿勢。
+    """
+
     bed_id: str
-    sdp: Optional[str] = None
-    candidate: Optional[dict] = None
+    ts: datetime
+    current_posture: Optional[Posture] = None
 
 
 class ResolveReportRequest(BaseModel):

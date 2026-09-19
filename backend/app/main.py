@@ -2,21 +2,37 @@
 # 對應 API_CONTRACT.md：
 #   GET  /api/beds                      -> 床位靜態名冊
 #   WS   /ws/overview                   -> 總覽頁，持續推送 OverviewUpdate[]
-#   WS   /ws/room/{bed_id}              -> RoomDetail 頁：state(vitals+active_events) + WebRTC signaling
+#   WS   /ws/room/{bed_id}              -> RoomDetail 頁，預設 role=viewer（推送 state）；
+#                                           board 端連 /ws/room/{bed_id}?role=board 上傳姿勢
 #   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
 #   GET  /api/beds/{bed_id}/events/history -> 該床已處理事件紀錄，resolved_at 新到舊（寫進 event_history.json，重啟即清空）
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理，body 附病例紀錄（idempotent，寫進 case_reports.json）
 #   GET  /api/reports/export            -> 把 case_reports.json 整理成 PDF 下載，成功後清空 case_reports.json（摘要目前是假資料，待接 LLM）
+#
+# 影像走另一條獨立的全域 pipe（不分 bed_id，demo 只有一床有真的攝影機）：
+#   GET  /camera             -> 監看頁
+#   WS   /ws/camera/publish  -> board 端上傳 JPEG
+#   WS   /ws/camera/view     -> 前端拉取最新 JPEG
+# 這條在 camera_stream.py，見該檔案。demo 用 bed_id "101" 當作有真實攝影機的那一床，
+# 這只是前端/文件上的慣例，不是後端 schema 裡的欄位。
 
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import report_generator, simulator, store
-from app.camera_stream import CameraStream, router as camera_router
-from app.schemas import BedInfo, ResolveReportRequest, RoomDetailUpdate, WardAgentOutput
+from app.camera_stream import CameraStream
+from app.camera_stream import router as camera_router
+from app.schemas import (
+    BedInfo,
+    BoardPostureUpdate,
+    ResolveReportRequest,
+    RoomDetailUpdate,
+    WardAgentOutput,
+)
 
 
 @asynccontextmanager
@@ -112,14 +128,21 @@ async def ws_overview(websocket: WebSocket):
 
 
 @app.websocket("/ws/room/{bed_id}")
-async def ws_room(websocket: WebSocket, bed_id: str):
+async def ws_room(websocket: WebSocket, bed_id: str, role: Literal["board", "viewer"] = "viewer"):
     if not store.bed_exists(bed_id):
         await websocket.close(code=4004)
         return
 
     await websocket.accept()
 
-    async def push_state():
+    if role == "board":
+        await _handle_board_connection(websocket, bed_id)
+    else:
+        await _handle_viewer_connection(websocket, bed_id)
+
+
+async def _handle_viewer_connection(websocket: WebSocket, bed_id: str) -> None:
+    try:
         while True:
             vitals = store.get_vitals(bed_id)
             update = RoomDetailUpdate(
@@ -127,19 +150,19 @@ async def ws_room(websocket: WebSocket, bed_id: str):
                 ts=vitals.ts,
                 vitals=vitals,
                 active_events=store.get_active_events(bed_id),
+                current_posture=store.get_posture(bed_id),
             )
             await websocket.send_json(update.model_dump(mode="json"))
             await asyncio.sleep(1.5)
-
-    push_task = asyncio.create_task(push_state())
-    try:
-        while True:
-            # TODO: WebRTC signaling relay — 收到的 webrtc_offer/webrtc_answer/webrtc_ice
-            # 要轉發給同一個 bed_id 上的另一方（board 或瀏覽器）。Board 端的 WebRTC 還沒接上，
-            # 先只是收下不處理，避免連線被塞爆。
-            await websocket.receive_json()
     except WebSocketDisconnect:
         pass
-    finally:
-        push_task.cancel()
-        await asyncio.gather(push_task, return_exceptions=True)
+
+
+async def _handle_board_connection(websocket: WebSocket, bed_id: str) -> None:
+    try:
+        while True:
+            raw = await websocket.receive_json()
+            update = BoardPostureUpdate(**{**raw, "bed_id": bed_id})
+            store.set_posture(bed_id, update.current_posture)
+    except WebSocketDisconnect:
+        pass

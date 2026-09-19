@@ -17,37 +17,33 @@
 這兩個端點與下方的病房端點同時有效，既有病房 JSON schema 不變。
 目前是全系統單一 camera，沒有 `bed_id` 對應；不要把它當作每個床位各自的影像。
 
-**下方 WebRTC／SDP／ICE 內容屬原先規劃，尚未實作 relay 或 P2P 影像。**
-`/ws/room/{bed_id}` 現在持續推送 state，收到的 signaling 訊息只讀取、不轉發。
-React `VideoFeed` 仍使用 WebRTC 骨架；本次只整併 backend，JPEG 觀看 API 是 `/ws/camera/view`，backend 不提供監看 HTML 頁。
+**WebRTC 已經不是這個專案在用的方案**，`schemas.py` 裡也沒有 `WebRTCSignal` 這個 class 了；`/ws/room/{bed_id}` 現在只做兩件事：`role=viewer`（預設）持續推送 state，`role=board` 接收 board 傳來的姿勢，兩者都跟影像無關。影像走下面的 JPEG relay，backend 不提供監看 HTML 頁（`GET /camera` 已移除），`VideoFeed.jsx` 已改接 `/ws/camera/view`。
 
 ## 資料流
 
 ```
                          ┌───────────────────────────┐
-Board 攝影機/姿勢推論     │                           │
-   └─ Keypoints ────────▶│  behavior_engine           │
-                         │      + patient_context     │
-                         │      + ward_agent          │
-                         │        └─ WardAgentOutput ─┼──┐
-   vitals_simulator ─────▶  (backend 內部)             │  │
-                         └───────────────────────────┘  │
-                                                          ▼
-                                                   Backend (FastAPI)
+Board 姿勢推論           │                           │
+   └─ current_posture ──▶│  Backend (FastAPI)         │
+                         │  /ws/room/{bed_id}?role=board│
+   vitals_simulator ─────▶  (backend 內部)             │
+                         └─────────────┬─────────────┘
+                                        │ posture 存進 state，跟著下一次 state 一起送
+                                        ▼
                          ┌──────────────────────────────────────┐
                          │ GET  /api/beds                        │──▶ Overview 頁（載入一次）
                          │ WS   /ws/overview                     │──▶ Overview 頁（持續推送）
-                         │ WS   /ws/room/{bed_id}                │──▶ RoomDetail 頁（vitals+events+signaling）
+                         │ WS   /ws/room/{bed_id}（預設 role=viewer）│──▶ RoomDetail 頁（state）
                          │ POST /api/events/{event_id}/resolve   │◀── RoomDetail 頁（護理站標記已處理）
                          └──────────────────────────────────────┘
 
-影像：Board 攝影機 → /ws/camera/publish 把 JPEG frame 送進 backend（單一 publisher，記憶體內只留最新一張）
-      → RoomDetail 頁用 /ws/camera/view 用「要一張、給一張」的方式輪詢最新畫面。
-      影像本身有經過 backend 轉送（跟下面 WebRTC signaling 的 P2P 假設不同，見「攝影機串流」一節）。
-
-（原本規劃的 WebRTC P2P + /ws/room/{bed_id} signaling relay 仍保留在 schema 裡，
- 但 Board 端尚未實作 WebRTC，目前實際在用的是上面的 JPEG relay 方案。）
+Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（camera_stream.py，全域單一 camera，
+                                                  不分 bed_id）──▶ /ws/camera/view ──▶ 瀏覽器
 ```
+
+**影像傳輸走另一條獨立的全域 pipe**，不是 `/ws/room/{bed_id}`：board 用 binary WebSocket 把 JPEG 傳給 `/ws/camera/publish`，前端從 `/ws/camera/view` 拉取最新一張，protocol/backpressure 細節見 `streaming/README.md` 跟 `backend/app/camera_stream.py`。這條不分 `bed_id`——demo 只有一床（`bed_id = "101"`）有真的攝影機，這是前端/文件上的慣例，不是後端 schema 欄位，也沒有做 `bed_id` 範圍化（多鏡頭要支援時才需要）。
+
+姿勢分類（站/坐/躺/舉手）由 board 算好，透過 `/ws/room/{bed_id}?role=board`（跟影像分開的另一條連線）傳給 backend，backend 只是存放/轉發，不自己做分類。
 
 ## 端點
 
@@ -55,15 +51,14 @@ Board 攝影機/姿勢推論     │                           │
 |---|---|---|
 | GET | `/api/beds` | 一次性拉全部床位/病患靜態名冊 |
 | WS | `/ws/overview` | 全床摘要，持續推送（總覽頁用） |
-| WS | `/ws/room/{bed_id}` | 單床 vitals + active_events + WebRTC signaling（詳細頁用，進頁才連線） |
+| WS | `/ws/room/{bed_id}`（`?role=viewer`，預設值） | 單床 state（vitals+active_events+current_posture），詳細頁用，進頁才連線 |
+| WS | `/ws/room/{bed_id}?role=board` | Board 端連線，上傳 `current_posture`（見下方 `BoardPostureUpdate`） |
+| WS | `/ws/camera/publish` | Board（攝影機端）上傳 JPEG（binary），全域單一 camera |
+| WS | `/ws/camera/view` | RoomDetail 頁拉取最新 JPEG（binary），全域單一 camera |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
-| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理 |
 | GET | `/api/beds/{bed_id}/events/history` | 查該床已處理事件紀錄（`resolved_at` 不為 `null`），見下方「事件歷史」 |
 | POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理，body 附一份病例紀錄，見下方「病例紀錄與匯出報告」 |
 | GET | `/api/reports/export` | 把目前累積的病例紀錄整理成 PDF 報告，直接回傳檔案下載，見下方「病例紀錄與匯出報告」 |
-| GET | `/camera` | 攝影機串流測試頁（`camera.html`），瀏覽器直接開來測 publish 端，不是正式前端會用到的頁面 |
-| WS | `/ws/camera/publish` | Board（攝影機端）推送 JPEG frame 進 backend |
-| WS | `/ws/camera/view` | RoomDetail 頁輪詢目前最新一張攝影機畫面 |
 
 ## Schema
 
@@ -204,39 +199,38 @@ Board 攝影機/姿勢推論     │                           │
   "bed_id": "103",
   "ts": "2026-09-19T14:32:10Z",
   "vitals": { "...": "見上方 Vitals" },
-  "active_events": [ "...WardAgentOutput 陣列..." ]
+  "active_events": [ "...WardAgentOutput 陣列..." ],
+  "current_posture": "lying"
 }
 ```
 
 | 欄位 | 型別 | 可能值 / 說明 |
 |---|---|---|
-| `type` | const | 固定為 `"state"`，前端用來跟 webrtc signaling 訊息區分 |
+| `type` | const | 固定為 `"state"` |
 | `bed_id` | string | 對應 `BedInfo.bed_id` |
 | `ts` | datetime (ISO 8601, UTC) | 這筆狀態訊息的產生時間 |
 | `vitals` | `Vitals` | 見上方 `Vitals` schema |
 | `active_events` | `WardAgentOutput[]` | 目前所有 `resolved_at` 為 `null` 的事件；可以是空陣列（代表無事件） |
+| `current_posture` | enum \| null | `standing`（站）/ `sitting`（坐）/ `lying`（躺）/ `raising_hand`（舉手）。由 board 直接算好傳過來（`streaming/movenet_pose.py` 的 `stable_pose`），backend 只是存放轉發；模擬房間、board 還沒送過資料、或 board 判斷為 `unknown` 時為 `null` |
 
-### WebRTC signaling（`/ws/room/{bed_id}` 上，用 `type` 跟 state 訊息共用同一條連線）
+### `BoardPostureUpdate`（board 連到 `/ws/room/{bed_id}?role=board` 上傳的訊息）
 ```json
-{ "type": "webrtc_offer", "bed_id": "103", "sdp": "..." }
-{ "type": "webrtc_answer", "bed_id": "103", "sdp": "..." }
-{ "type": "webrtc_ice", "bed_id": "103", "candidate": { "...": "..." } }
+{
+  "ts": "2026-09-19T14:32:10Z",
+  "current_posture": "lying"
+}
 ```
 
 | 欄位 | 型別 | 可能值 / 說明 |
 |---|---|---|
-| `type` | enum | `webrtc_offer` / `webrtc_answer` / `webrtc_ice`（跟 `"state"` 共用同一個 `type` 欄位空間，前端靠這個字串分派） |
-| `bed_id` | string | 對應 `BedInfo.bed_id` |
-| `sdp` | string \| null | SDP payload，只有 `webrtc_offer`/`webrtc_answer` 會有值，`webrtc_ice` 時為 `null` |
-| `candidate` | object \| null | ICE candidate 物件（瀏覽器 `RTCIceCandidate` 原生結構），只有 `webrtc_ice` 會有值，其餘為 `null` |
+| `ts` | datetime (ISO 8601, UTC) | board 這筆姿勢判斷的時間 |
+| `current_posture` | enum \| null | 同 `RoomDetailUpdate.current_posture` 的列舉值 |
 
-- 影像本身不經過這個 JSON 通道，只有 SDP/ICE 交換走這裡；交換完成後 media 是 board 與瀏覽器 P2P 直連
-- 影像是原始攝影機畫面，骨架線條目前**不**烤進畫面（前端不需要、也不會拿到 keypoints）
-- **目前狀態**：`/ws/room/{bed_id}` 收到這三種 signaling 訊息後只是原地丟掉（TODO，還沒轉發給另一方），Board 端也還沒實作 WebRTC。實際在跑的影像方案是下面的「攝影機串流」
+`bed_id` 不用放在訊息內容裡，已經在連線網址 `/ws/room/{bed_id}` 裡了。這條連線不傳影像——影像走 `/ws/camera/publish`，是完全獨立的另一條 pipe（見上方「資料流」）。
 
-### 攝影機串流（`/camera`、`/ws/camera/publish`、`/ws/camera/view`）
+### 攝影機串流（`/camera` 監看頁已移除、`/ws/camera/publish`、`/ws/camera/view`）
 
-跟上面 WebRTC 的 P2P 假設不同，這套是單一鏡頭的 JPEG frame relay，影像有經過 backend（`backend/app/camera_stream.py`），只支援單一 uvicorn worker（狀態存在記憶體裡，不能多 worker 部署）。
+單一鏡頭的 JPEG frame relay，影像有經過 backend（`backend/app/camera_stream.py`），只支援單一 uvicorn worker（狀態存在記憶體裡，不能多 worker 部署）。跟上面的 JSON envelope 系列（`state`/`BoardPostureUpdate`）不同，這兩支是純 binary WebSocket，不是 `{type, bed_id, ...}` 格式，也不分 `bed_id`。
 
 **`WS /ws/camera/publish`**（Board / 攝影機端連線）
 - 連上後 server 先送文字 `"ready"`
@@ -249,9 +243,11 @@ Board 攝影機/姿勢推論     │                           │
 - 是 pull 模式：viewer 每次想要下一張畫面，就送文字 `"next"`
 - server 收到 `"next"` 後回應二選一：
   - 有新畫面：直接回傳 binary frame（JPEG bytes）
-  - 沒有新畫面：回傳 JSON `{"status": "waiting"}`（目前沒有 publisher，或超過 3 秒沒更新 → 視為 stale）或 `{"status": "unchanged"}`（有 publisher 但畫面跟上次要到的一樣）
+  - 沒有新畫面：回傳 JSON `{"status": "waiting"}`（目前沒有 publisher，或超過 3 秒沒更新 → 視為 stale）或 `{"status": "unchanged"}`（有 publisher 但畫面跟上次拿到的一樣）
 - 送的不是 `"next"` 的其他文字會被視為協定錯誤，直接關閉連線（`1008`）
 - 前端要自己維護一個迴圈：收到一張（或 waiting/unchanged）後，馬上送下一個 `"next"`
+
+完整協定細節、GStreamer pipeline、板子端指令見 `streaming/README.md`；backend 端實作在 `backend/app/camera_stream.py`。
 
 ## 事件生命週期
 
@@ -287,18 +283,13 @@ Board 攝影機/姿勢推論     │                           │
 ## 前端消費方式
 
 - **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名；頁面上的「匯出」按鈕呼叫 `GET /api/reports/export` 下載 PDF。
-- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線拿 vitals/events；影像另外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」）；`active_events` 列表每筆放「標記已處理」跟「誤觸」兩個按鈕——前者彈出表單，填完呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷，會進處理紀錄），後者純前端濾掉、不打 API（見上面「誤觸」）；影像下方的「處理紀錄」呼叫 `GET /api/beds/{bed_id}/events/history` 顯示；頁面上也有「匯出」按鈕，跟 Overview 頁一樣呼叫 `GET /api/reports/export`。
+- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線（不用帶 `role`，預設就是 viewer）拿 vitals/events/`current_posture`；**只有 `bed_id === "101"`** 時額外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」），其他床沒有真實攝影機，不用連；`active_events` 列表每筆放「標記已處理」跟「誤觸」兩個按鈕——前者彈出表單，填完呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷，會進處理紀錄），後者純前端濾掉、不打 API（見上面「誤觸」）；影像下方的「處理紀錄」呼叫 `GET /api/beds/{bed_id}/events/history` 顯示；頁面上也有「匯出」按鈕，跟 Overview 頁一樣呼叫 `GET /api/reports/export`。
 
 ## 目前狀態
 
-- 病房 REST、`/ws/overview` 與 `/ws/room/{bed_id}` 已實作。
-- `/ws/camera/publish` 與 `/ws/camera/view` 已整併到同一個 FastAPI app。
-- `GET /camera` 與 `camera.html` 已移除，backend 只提供串流 API。
-- `VideoFeed.jsx` 已使用 `/ws/camera/view` 顯示 JPEG。
-- MoveNet 結果目前仍只輸出在板子終端，尚未上傳到病房事件 API。
-- WebRTC signaling relay 尚未實作。
-- `backend/app/main.py`：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（vitals+events 推播）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 已實作；`/ws/room/{bed_id}` 裡的 WebRTC signaling relay 還是 TODO（收到即丟棄，不影響 vitals/events 推播）
-- `backend/app/camera_stream.py`：`/camera`、`/ws/camera/publish`、`/ws/camera/view` 已實作，是目前實際在用的影像方案（取代原本規劃的 WebRTC P2P）
+- Backend（`schemas.py`/`store.py`/`simulator.py`/`main.py`）：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（`role=board` 上傳姿勢、`role=viewer` 推送 state+events+`current_posture`）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 都已實作，不是骨架。`current_posture`/`vitals`/事件目前由 `simulator.py` 的背景任務產生假資料（demo 用），board 接上之後直接把假資料來源換掉即可，介面不用動。
+- `backend/app/camera_stream.py`：`/ws/camera/publish`、`/ws/camera/view` 已實作並整併進同一個 FastAPI app；`GET /camera` 監看頁跟 `camera.html` 已移除，backend 只提供串流 API。板子端 GStreamer/MoveNet 程式在 `streaming/`。
 - `backend/app/report_generator.py`：PDF 產生已實作，**摘要文字是假資料**，待接 LLM（見「病例紀錄與匯出報告」）
-- `frontend/src/components/VideoFeed.jsx`：已改成接 `/ws/camera/view`
-- `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接
+- MoveNet 姿勢分類結果目前仍只輸出在板子終端，尚未透過 `/ws/room/{bed_id}?role=board` 上傳給 backend（見 [`BOARD_API_SPEC.md`](./BOARD_API_SPEC.md)）。
+- `frontend/src/components/VideoFeed.jsx`：已改接 `/ws/camera/view` 顯示 JPEG。
+- `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接。
