@@ -5,9 +5,19 @@
 #   - vitals_simulator 產生的假生理數據
 #   - 統一格式後透過 /ws 推送給前端
 
-from fastapi import FastAPI, WebSocket
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from fastapi import FastAPI, WebSocket
+from .camera_stream import CameraStream, router as camera_router
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.camera = CameraStream()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(camera_router)
 
 
 @app.get("/")

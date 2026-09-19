@@ -47,7 +47,8 @@ ward-monitor/
 ### Camera 即時監看實驗
 
 單獨測試「開發板 camera → server → 瀏覽器」請看 [streaming/README.md](streaming/README.md)。
-使用 GStreamer 推送 H.264 / RTSP，由 MediaMTX 提供 WebRTC 觀看頁，不需先啟動下方服務。
+直接轉送 camera 輸出的 MJPEG，透過 WebSocket 傳至 FastAPI；觀看入口為 `http://SERVER_IP:8000/camera`。
+不需 H.264 編碼器、MediaMTX 或 React。請依 streaming 文件用單一 worker 啟動 backend。
 
 ### Backend
 ```bash
