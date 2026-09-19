@@ -2,6 +2,25 @@
 
 補充 README 提到、但目前找不到的 `病房監測系統_Spec.md` 的前後端契約部分。Board 端姿勢推論/行為判斷內部格式不在這份文件範圍內，仍以 `schemas.py` 裡的 `Keypoints` / `BehaviorEvent` 為準（維持 TODO）。
 
+## 現行 backend 整合狀態
+
+病房 API 與 MJPEG 串流共用 `app.main:app`、同一個 lifespan 及 TCP 8000。
+啟動時同時建立 camera 狀態、床位／事件資料與兩個背景模擬任務，關閉時取消並等待模擬任務結束。
+所有狀態在記憶體內，部署只能使用單一 worker。
+
+| 方法 | 現行串流端點 | 用途 |
+| --- | --- | --- |
+| WS | `/ws/camera/publish` | 單一板子發布 JPEG，使用 ready / ok ACK |
+| WS | `/ws/camera/view` | 觀看者以 next 取得最新 JPEG 或 waiting / unchanged 狀態 |
+
+詳細 wire format、大小限制、逾時及錯誤碼見 [streaming API spec](streaming/README.md#streaming-api-spec)。
+這兩個端點與下方的病房端點同時有效，既有病房 JSON schema 不變。
+目前是全系統單一 camera，沒有 `bed_id` 對應；不要把它當作每個床位各自的影像。
+
+**下方 WebRTC／SDP／ICE 內容屬原先規劃，尚未實作 relay 或 P2P 影像。**
+`/ws/room/{bed_id}` 現在持續推送 state，收到的 signaling 訊息只讀取、不轉發。
+React `VideoFeed` 仍使用 WebRTC 骨架；本次只整併 backend，JPEG 觀看 API 是 `/ws/camera/view`，backend 不提供監看 HTML 頁。
+
 ## 資料流
 
 ```
@@ -38,6 +57,7 @@ Board 攝影機/姿勢推論     │                           │
 | WS | `/ws/overview` | 全床摘要，持續推送（總覽頁用） |
 | WS | `/ws/room/{bed_id}` | 單床 vitals + active_events + WebRTC signaling（詳細頁用，進頁才連線） |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
+| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理 |
 | GET | `/api/beds/{bed_id}/events/history` | 查該床已處理事件紀錄（`resolved_at` 不為 `null`），見下方「事件歷史」 |
 | POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理，body 附一份病例紀錄，見下方「病例紀錄與匯出報告」 |
 | GET | `/api/reports/export` | 把目前累積的病例紀錄整理成 PDF 報告，直接回傳檔案下載，見下方「病例紀錄與匯出報告」 |
@@ -271,6 +291,12 @@ Board 攝影機/姿勢推論     │                           │
 
 ## 目前狀態
 
+- 病房 REST、`/ws/overview` 與 `/ws/room/{bed_id}` 已實作。
+- `/ws/camera/publish` 與 `/ws/camera/view` 已整併到同一個 FastAPI app。
+- `GET /camera` 與 `camera.html` 已移除，backend 只提供串流 API。
+- `VideoFeed.jsx` 已使用 `/ws/camera/view` 顯示 JPEG。
+- MoveNet 結果目前仍只輸出在板子終端，尚未上傳到病房事件 API。
+- WebRTC signaling relay 尚未實作。
 - `backend/app/main.py`：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（vitals+events 推播）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 已實作；`/ws/room/{bed_id}` 裡的 WebRTC signaling relay 還是 TODO（收到即丟棄，不影響 vitals/events 推播）
 - `backend/app/camera_stream.py`：`/camera`、`/ws/camera/publish`、`/ws/camera/view` 已實作，是目前實際在用的影像方案（取代原本規劃的 WebRTC P2P）
 - `backend/app/report_generator.py`：PDF 產生已實作，**摘要文字是假資料**，待接 LLM（見「病例紀錄與匯出報告」）

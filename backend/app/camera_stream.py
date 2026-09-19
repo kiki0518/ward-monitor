@@ -1,10 +1,8 @@
 """Single-camera JPEG relay. Run with one Uvicorn worker (in-memory state)."""
 import asyncio
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
 
 router = APIRouter()
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -29,11 +27,6 @@ class CameraStream:
                 pass
             fresh = self.frame is not None and time.monotonic() - self.received_at < STALE_SECONDS
             return self.sequence, self.frame if fresh else None
-
-
-@router.get('/camera', include_in_schema=False)
-def camera_page():
-    return FileResponse(Path(__file__).with_name('camera.html'), headers={'Cache-Control': 'no-store'})
 
 
 @router.websocket('/ws/camera/publish')

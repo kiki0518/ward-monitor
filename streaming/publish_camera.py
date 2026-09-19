@@ -104,7 +104,7 @@ def run(args, Gst, connect):
                 with connect(url, compression=None, max_size=1024, open_timeout=5, close_timeout=2) as ws:
                     if ws.recv(timeout=5) != 'ready':
                         raise RuntimeError('Unexpected server handshake')
-                    print(f'Connected. Watch http://{args.server}:{args.port}/camera', flush=True)
+                    print(f'Connected. Viewer API: ws://{args.server}:{args.port}/ws/camera/view', flush=True)
                     last_sample = time.monotonic()
                     while True:
                         check_camera(bus, Gst)
