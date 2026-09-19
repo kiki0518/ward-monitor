@@ -26,12 +26,26 @@ export default function VitalsPanel({ history }) {
           <YAxis yAxisId="hr" domain={[40, 140]} hide />
           <YAxis yAxisId="spo2" domain={[85, 100]} hide />
           <Tooltip />
-          <Legend verticalAlign="top" height={24} />
+          <Legend verticalAlign="top" height={24} wrapperStyle={{ top: -10 }} />
           <Line yAxisId="hr" type="monotone" dataKey="heart_rate" name="心跳 (bpm)" stroke="#c62828" dot={false} isAnimationActive={false} />
           <Line yAxisId="spo2" type="monotone" dataKey="spo2" name="血氧 (%)" stroke="#1565c0" dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
       <div className="vitals-panel__cards">
+        <div className="vitals-card">
+          <span className="vitals-card__label">心跳</span>
+          <span className="vitals-card__value" style={{ color: "#c62828" }}>
+            {latest.heart_rate}
+          </span>
+          <span className="vitals-card__unit">bpm</span>
+        </div>
+        <div className="vitals-card">
+          <span className="vitals-card__label">血氧</span>
+          <span className="vitals-card__value" style={{ color: "#1565c0" }}>
+            {latest.spo2}
+          </span>
+          <span className="vitals-card__unit">%</span>
+        </div>
         <div className="vitals-card">
           <span className="vitals-card__label">血壓</span>
           <span className="vitals-card__value">
