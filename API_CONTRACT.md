@@ -38,7 +38,9 @@ Board 攝影機/姿勢推論     │                           │
 | WS | `/ws/overview` | 全床摘要，持續推送（總覽頁用） |
 | WS | `/ws/room/{bed_id}` | 單床 vitals + active_events + WebRTC signaling（詳細頁用，進頁才連線） |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
-| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理 |
+| GET | `/api/beds/{bed_id}/events/history` | 查該床已處理事件紀錄（`resolved_at` 不為 `null`），見下方「事件歷史」 |
+| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理，body 附一份病例紀錄，見下方「病例紀錄與匯出報告」 |
+| GET | `/api/reports/export` | 把目前累積的病例紀錄整理成 PDF 報告，直接回傳檔案下載，見下方「病例紀錄與匯出報告」 |
 | GET | `/camera` | 攝影機串流測試頁（`camera.html`），瀏覽器直接開來測 publish 端，不是正式前端會用到的頁面 |
 | WS | `/ws/camera/publish` | Board（攝影機端）推送 JPEG frame 進 backend |
 | WS | `/ws/camera/view` | RoomDetail 頁輪詢目前最新一張攝影機畫面 |
@@ -120,6 +122,37 @@ Board 攝影機/姿勢推論     │                           │
 | `started_at` | datetime (ISO 8601, UTC) | 這個事件第一次被偵測到的時間，重複偵測到同一事件時不會變（見下方「事件生命週期」） |
 | `last_seen_at` | datetime (ISO 8601, UTC) | 這個事件最近一次被重新偵測到的時間，跟 `started_at` 一起可以判斷「已經持續多久」跟「是不是還在發生」 |
 | `resolved_at` | datetime \| null | 護理站按「標記已處理」的時間；`null` 代表事件仍 active。一張床可以同時有多個 `resolved_at` 為 `null` 的 active event |
+
+### `ResolveReportRequest`（`POST /api/events/{event_id}/resolve` 的 request body）
+```json
+{
+  "completed_actions": "協助病患回床並安撫情緒",
+  "follow_up": "持續觀察生命徵象",
+  "notes": "家屬在場陪同"
+}
+```
+
+| 欄位 | 型別 | 可能值 / 說明 |
+|---|---|---|
+| `completed_actions` | string | 護理站已完成的處理內容，必填 |
+| `follow_up` | string | 需要交接給下一位人員的後續處理，必填（沒有的話傳空字串） |
+| `notes` | string | 備註，選填，預設空字串 |
+
+前端彈出的「標記已處理」表單對應這三個欄位；這支請求沒有這個 body 會被 FastAPI 擋下（422）。
+
+### `CaseReport`（寫進 `case_reports.json` 的一筆紀錄，`GET /api/reports/export` 用來產生 PDF）
+```json
+{
+  "event_id": "evt_20260919143150_a1b2",
+  "bed_id": "103",
+  "completed_actions": "協助病患回床並安撫情緒",
+  "follow_up": "持續觀察生命徵象",
+  "notes": "家屬在場陪同",
+  "resolved_at": "2026-09-19T14:32:18Z"
+}
+```
+
+`ResolveReportRequest` 補上 `event_id`/`bed_id`/`resolved_at` 就是這個 schema，這支不是任何端點的直接回傳值，只在 `case_reports.json` 裡以陣列形式存在。
 
 ### `Vitals`
 ```json
@@ -206,15 +239,40 @@ Board 攝影機/姿勢推論     │                           │
 - **查詢**：`GET /api/beds/{bed_id}/events` 只回傳該床目前 active 的事件（`resolved_at is None`），**不含**已 resolved 的，bare array（`WardAgentOutput[]`），依 `priority` 高到低排序（`red` → `yellow` → `green`），同 priority 內新到舊，不分頁。找不到 `bed_id` 時回 `404`。這支本質上是 `active_events` 的 REST 版本（不用開 WebSocket 也能拿到目前 active 事件），不是完整事件歷史。
 - **resolve 的 idempotency**：對一筆已經 resolved 的事件再打一次 `POST .../resolve`，直接回傳目前狀態、不報錯、也不會覆寫既有的 `resolved_at`（不是把它蓋成新的時間戳記）。前端不用先查詢目前狀態才敢呼叫。沒有「撤銷」功能——resolve 是單向操作，標記錯了目前無法復原。
 - **不做的事**：resolved 事件永遠留著，不清除、不做 retention（單一 process、記憶體內、demo 用途，重啟就清空；真的要長期運行再處理）。
+- **誤觸（前端行為，不是 API）**：`RoomDetail` 頁的「誤觸」按鈕純粹是前端把該 `event_id` 從畫面上濾掉，**不呼叫任何後端 API**、不改 `resolved_at`、也不進事件歷史。因為沒有寫回後端，這筆事件在 `store.py` 裡仍然是 active，下次 `ward_agent` 再判斷到同樣的 `(bed_id, state)` 時仍會沿用同一個 `event_id`（見上面「去重」規則）。
+
+## 事件歷史
+
+`GET /api/beds/{bed_id}/events/history` — 查該床所有透過 `resolve` 處理過的事件，給 RoomDetail 頁影像下方的「處理紀錄」用。
+
+- **回傳格式**：跟 `GET /api/beds/{bed_id}/events` 一樣，bare array（`WardAgentOutput[]`）。依 `resolved_at` 新到舊排序，不分頁。找不到 `bed_id` 時回 `404`。
+- **儲存方式**：後端把事件寫進一個 JSON 檔案（`backend/app/data/event_history.json`，已加進 `.gitignore`），**每次後端重新啟動時初始化（清空）這個檔案**——只記錄「這次執行期間」處理過的事件，不是跨重啟的永久紀錄，重啟後歷史會歸零。跟現有 `store.py` 的 in-memory 資料一樣是 demo 用途，不是真正的資料庫。
+- **寫入時機**：`POST /api/events/{event_id}/resolve` 成功時 append 進 JSON 檔案。「誤觸」是純前端行為，不會寫進來。
+
+## 病例紀錄與匯出報告
+
+`POST /api/events/{event_id}/resolve` 現在**必須**帶 `ResolveReportRequest` body（見上方 schema）。前端在使用者按下「標記已處理」時彈出一個表單（已完成的處理／需要下一位處理／備註），填完按「確認」才會真的打這支 API；「取消」則什麼都不送。
+
+- **儲存**：resolve 成功（第一次，非 idempotent 重複呼叫）時，除了原本寫進 `event_history.json`，同時把 `ResolveReportRequest` 補上 `event_id`/`bed_id`/`resolved_at` 組成 `CaseReport`，append 進 `backend/app/data/case_reports.json`（已加進 `.gitignore`）。跟 `event_history.json` 一樣**每次後端重新啟動就清空**，不是永久紀錄。
+- **idempotency**：對已經 resolved 的事件再打一次 `resolve`（不論這次 body 內容是什麼），不會覆寫 `resolved_at`，也不會重複寫入 `case_reports.json`。
+
+`GET /api/reports/export` — 把目前 `case_reports.json` 裡的所有紀錄整理成一份 PDF，直接以 `Content-Disposition: attachment` 回傳，前端收到後觸發瀏覽器下載，不分床位、不分頁面，回傳的是**全部**病例紀錄的彙整報告。
+
+- **內容**：報告開頭有一段摘要文字，後面列出每筆病例的床號/事件 id/處理時間/三個欄位內容。
+- **摘要目前是假資料**（`backend/app/report_generator.py` 的 `_summarize()`），先用固定模板文字撐住前後端流程；之後要接 LLM，只要把這個函式換成真正呼叫 LLM API（把 `case_reports` 序列化丟進去，回傳摘要文字）即可，其他部分不用動。
+- **PDF 產生**：用 `fpdf2`（純 Python，不需要系統層級相依套件），中文字型內嵌 `backend/app/data/fonts/NotoSansTC-Regular.ttf`（Google Noto Sans TC，OFL 授權，已存進 repo）。
+- 沒有任何病例紀錄時，PDF 仍會正常產生，摘要文字會說明「本次匯出範圍內沒有已處理的病例紀錄」。
+- **匯出後會清空**：PDF 產生成功後，`case_reports.json` 會被清空（等於這批病例紀錄「已經匯出過」）。所以同一筆病例只會出現在**下一次**匯出的報告裡一次，不會被重複匯出；下次再打這支 API，範圍只會是「上次匯出之後新累積的病例」。`event_history.json`（RoomDetail 的「處理紀錄」）不受影響，不會被這支端點清空。
 
 ## 前端消費方式
 
-- **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名。
-- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線拿 vitals/events；影像另外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」）；`active_events` 列表旁可以放「標記已處理」按鈕 → 呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷）。
+- **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名；頁面上的「匯出」按鈕呼叫 `GET /api/reports/export` 下載 PDF。
+- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線拿 vitals/events；影像另外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」）；`active_events` 列表每筆放「標記已處理」跟「誤觸」兩個按鈕——前者彈出表單，填完呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷，會進處理紀錄），後者純前端濾掉、不打 API（見上面「誤觸」）；影像下方的「處理紀錄」呼叫 `GET /api/beds/{bed_id}/events/history` 顯示；頁面上也有「匯出」按鈕，跟 Overview 頁一樣呼叫 `GET /api/reports/export`。
 
 ## 目前狀態
 
-- `backend/app/main.py`：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（vitals+events 推播）、`/api/beds/{bed_id}/events`、`/api/events/{event_id}/resolve` 已實作；`/ws/room/{bed_id}` 裡的 WebRTC signaling relay 還是 TODO（收到即丟棄，不影響 vitals/events 推播）
+- `backend/app/main.py`：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（vitals+events 推播）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 已實作；`/ws/room/{bed_id}` 裡的 WebRTC signaling relay 還是 TODO（收到即丟棄，不影響 vitals/events 推播）
 - `backend/app/camera_stream.py`：`/camera`、`/ws/camera/publish`、`/ws/camera/view` 已實作，是目前實際在用的影像方案（取代原本規劃的 WebRTC P2P）
-- `frontend/src/components/VideoFeed.jsx`：待改成接 `/ws/camera/view`（目前仍是舊版 WebRTC 實作，對不上後端現況）
+- `backend/app/report_generator.py`：PDF 產生已實作，**摘要文字是假資料**，待接 LLM（見「病例紀錄與匯出報告」）
+- `frontend/src/components/VideoFeed.jsx`：已改成接 `/ws/camera/view`
 - `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接

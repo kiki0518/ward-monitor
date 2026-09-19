@@ -47,29 +47,24 @@ async def run_vitals_jitter(interval_seconds: float = 2.0) -> None:
 
 
 async def run_event_script(interval_seconds: float = 12.0) -> None:
-    """每隔一段時間，隨機讓某床冒出一個新事件，或解決掉一個既有事件。"""
+    """每隔一段時間，隨機讓某床冒出一個新事件。
+    不會自動解決事件——事件唯一消失的方式是護理站在前端手動「標記已處理」（或「誤觸」，
+    純前端行為），這樣測試時畫面上的變化才是可預期的，不會跟背景模擬互相干擾。"""
     while True:
         await asyncio.sleep(interval_seconds)
         beds = store.get_all_beds()
         if not beds:
             continue
 
-        if random.random() < 0.5:
-            candidates = [b for b in beds if not store.get_active_events(b.bed_id)] or beds
-            bed = random.choice(candidates)
-            state, reason, location = random.choice(_EVENT_LIBRARY)
-            priority: Priority = "red" if state == "possible_fall" else random.choice(["yellow", "red"])
-            store.report_event(
-                bed.bed_id,
-                state=state,
-                priority=priority,
-                reason=reason,
-                location=location,
-                action="請護理師查看",
-            )
-        else:
-            active_beds = [b for b in beds if store.get_active_events(b.bed_id)]
-            if active_beds:
-                bed = random.choice(active_beds)
-                event = random.choice(store.get_active_events(bed.bed_id))
-                store.resolve_event(event.event_id)
+        candidates = [b for b in beds if not store.get_active_events(b.bed_id)] or beds
+        bed = random.choice(candidates)
+        state, reason, location = random.choice(_EVENT_LIBRARY)
+        priority: Priority = "red" if state == "possible_fall" else random.choice(["yellow", "red"])
+        store.report_event(
+            bed.bed_id,
+            state=state,
+            priority=priority,
+            reason=reason,
+            location=location,
+            action="請護理師查看",
+        )

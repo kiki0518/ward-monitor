@@ -4,6 +4,10 @@ __pycache__/
 .venv/
 venv/
 
+# Runtime-generated (cleared on every backend startup, not persisted data)
+backend/app/data/event_history.json
+backend/app/data/case_reports.json
+
 # Node
 node_modules/
 dist/

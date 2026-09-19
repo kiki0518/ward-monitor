@@ -1,0 +1,89 @@
+.resolve-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.resolve-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.resolve-modal h3 {
+  margin: 0 0 16px;
+  font-family: var(--heading);
+  color: var(--text-h);
+}
+
+.resolve-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.resolve-modal__field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.resolve-modal__field textarea {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  resize: vertical;
+}
+
+.resolve-modal__field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.resolve-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.resolve-modal__cancel,
+.resolve-modal__confirm {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.resolve-modal__cancel {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+}
+
+.resolve-modal__cancel:disabled,
+.resolve-modal__confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.resolve-modal__confirm {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}

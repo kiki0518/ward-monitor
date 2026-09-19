@@ -5,9 +5,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
+import { useDismissedEvents } from "../context/DismissedEventsContext";
+import { GENDER_LABEL } from "../constants/labels";
 import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
+import EventHistory from "../components/EventHistory";
+import ExportButton from "../components/ExportButton";
 import "./RoomDetail.css";
 
 const VITALS_HISTORY_LIMIT = 30;
@@ -20,16 +24,18 @@ export default function RoomDetail() {
 
 function RoomDetailView({ bedId }) {
   const navigate = useNavigate();
-  const [patientName, setPatientName] = useState(null);
+  const [patient, setPatient] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
+  const { dismissedIds, dismissEvent } = useDismissedEvents();
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     fetchBeds()
       .then((beds) => {
         if (cancelled) return;
-        setPatientName(beds.find((bed) => bed.bed_id === bedId)?.patient_name ?? null);
+        setPatient(beds.find((bed) => bed.bed_id === bedId) ?? null);
       })
       .catch(() => {});
     return () => {
@@ -52,26 +58,47 @@ function RoomDetailView({ bedId }) {
 
   function handleResolved(eventId) {
     setActiveEvents((prev) => prev.filter((event) => event.event_id !== eventId));
+    setHistoryRefresh((prev) => prev + 1);
   }
+
+  function handleDismissed(eventId) {
+    dismissEvent(eventId);
+  }
+
+  const visibleEvents = activeEvents.filter((event) => !dismissedIds.has(event.event_id));
 
   return (
     <div className="room-detail">
-      <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
-        ← 返回
-      </button>
+      <div className="room-detail__toolbar">
+        <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
+          ← 返回
+        </button>
+        <ExportButton />
+      </div>
       <h1>
-        {bedId} 床{patientName ? ` · ${patientName}` : ""}
+        {bedId} 床{patient ? ` · ${patient.patient_name}` : ""}
       </h1>
+      {patient && (
+        <p className="room-detail__patient-meta">
+          {GENDER_LABEL[patient.gender] ?? patient.gender}・{patient.age} 歲・{patient.diagnosis}
+        </p>
+      )}
       <div className="room-detail__layout">
-        <VideoFeed bedId={bedId} />
+        <div>
+          <VideoFeed bedId={bedId} />
+          <section className="room-detail__history">
+            <h2>處理紀錄</h2>
+            <EventHistory bedId={bedId} refreshKey={historyRefresh} />
+          </section>
+        </div>
         <div className="room-detail__side">
+          <section>
+            <h2>待處理事件</h2>
+            <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
+          </section>
           <section>
             <h2>生理數據</h2>
             <VitalsPanel history={vitalsHistory} />
-          </section>
-          <section>
-            <h2>待處理事件</h2>
-            <EventsList events={activeEvents} onResolved={handleResolved} />
           </section>
         </div>
       </div>
