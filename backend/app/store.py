@@ -1,9 +1,10 @@
 # in-memory 資料存放，對應 API_CONTRACT.md
 #
-# 四種資料分開存：
+# 五種資料分開存：
 #   - _beds：床位靜態名冊 (BedInfo)，從 app/data/beds.csv 讀入，GET /api/beds 用
 #   - _vitals：每個床位最新一筆生理數據 (Vitals)
 #   - _postures：每個床位目前姿勢，board 算好直接傳過來，這裡只是存放/轉發，不做分類
+#   - _in_camera：board 是否在畫面裡偵測到人（True/False/None＝還沒收過 board 資料）
 #   - _events：每個床位的事件列表 (WardAgentOutput)，resolved_at 為 None 代表 active。
 #     resolved 之後不會被清除（demo scope 不做 retention），但 GET /api/beds/{bed_id}/events
 #     只回傳還 active 的，resolved 的不會出現在查詢結果裡，也沒有其他方式能查到它們
@@ -40,6 +41,7 @@ _CASE_REPORTS_JSON_PATH = Path(__file__).parent / "data" / "case_reports.json"
 _beds: dict[str, BedInfo] = {}
 _vitals: dict[str, Vitals] = {}
 _postures: dict[str, Optional[Posture]] = {}
+_in_camera: dict[str, Optional[bool]] = {}
 _events: dict[str, list[WardAgentOutput]] = {}
 
 
@@ -98,6 +100,7 @@ def seed_demo_data() -> None:
     _beds.clear()
     _vitals.clear()
     _postures.clear()
+    _in_camera.clear()
     _events.clear()
     _init_event_history_file()
     _init_case_reports_file()
@@ -108,6 +111,7 @@ def seed_demo_data() -> None:
         _beds[bed.bed_id] = bed
         _events[bed.bed_id] = []
         _postures[bed.bed_id] = None
+        _in_camera[bed.bed_id] = None
         _vitals[bed.bed_id] = Vitals(
             bed_id=bed.bed_id,
             bp_systolic=120,
@@ -166,6 +170,14 @@ def get_posture(bed_id: str) -> Optional[Posture]:
 
 def set_posture(bed_id: str, posture: Optional[Posture]) -> None:
     _postures[bed_id] = posture
+
+
+def get_in_camera(bed_id: str) -> Optional[bool]:
+    return _in_camera.get(bed_id)
+
+
+def set_in_camera(bed_id: str, in_camera: bool) -> None:
+    _in_camera[bed_id] = in_camera
 
 
 def report_event(

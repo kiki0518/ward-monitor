@@ -6,15 +6,15 @@
 #                                           board 端連 /ws/room/{bed_id}?role=board 上傳姿勢
 #   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
 #   GET  /api/beds/{bed_id}/events/history -> 該床已處理事件紀錄，resolved_at 新到舊（寫進 event_history.json，重啟即清空）
+#   POST /api/beds/{bed_id}/possible-fall -> Board 端回報疑似跌倒，backend 不重新驗證，直接建立/更新事件
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理，body 附病例紀錄（idempotent，寫進 case_reports.json）
 #   GET  /api/reports/export            -> 把 case_reports.json 整理成 PDF 下載，成功後清空 case_reports.json（摘要目前是假資料，待接 LLM）
 #
 # 影像走另一條獨立的全域 pipe（不分 bed_id，demo 只有一床有真的攝影機）：
-#   GET  /camera             -> 監看頁
 #   WS   /ws/camera/publish  -> board 端上傳 JPEG
 #   WS   /ws/camera/view     -> 前端拉取最新 JPEG
-# 這條在 camera_stream.py，見該檔案。demo 用 bed_id "101" 當作有真實攝影機的那一床，
-# 這只是前端/文件上的慣例，不是後端 schema 裡的欄位。
+# 這條在 camera_stream.py，見該檔案（GET /camera 監看頁已移除）。demo 用 bed_id "101"
+# 當作有真實攝影機的那一床，這只是前端/文件上的慣例，不是後端 schema 裡的欄位。
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -29,6 +29,7 @@ from app.camera_stream import router as camera_router
 from app.schemas import (
     BedInfo,
     BoardPostureUpdate,
+    PossibleFallReport,
     ResolveReportRequest,
     RoomDetailUpdate,
     WardAgentOutput,
@@ -88,6 +89,20 @@ def list_bed_event_history(bed_id: str):
     if not store.bed_exists(bed_id):
         raise HTTPException(status_code=404, detail="Bed not found")
     return store.get_resolved_events(bed_id)
+
+
+@app.post("/api/beds/{bed_id}/possible-fall", response_model=WardAgentOutput)
+def report_possible_fall(bed_id: str, report: PossibleFallReport):
+    if not store.bed_exists(bed_id):
+        raise HTTPException(status_code=404, detail="Bed not found")
+    return store.report_event(
+        bed_id,
+        state="possible_fall",
+        priority="red",
+        reason="疑似跌倒",
+        location="out_of_bed",
+        action="請護理師查看",
+    )
 
 
 @app.post("/api/events/{event_id}/resolve", response_model=WardAgentOutput)
@@ -151,6 +166,7 @@ async def _handle_viewer_connection(websocket: WebSocket, bed_id: str) -> None:
                 vitals=vitals,
                 active_events=store.get_active_events(bed_id),
                 current_posture=store.get_posture(bed_id),
+                in_camera=store.get_in_camera(bed_id),
             )
             await websocket.send_json(update.model_dump(mode="json"))
             await asyncio.sleep(1.5)
@@ -164,5 +180,6 @@ async def _handle_board_connection(websocket: WebSocket, bed_id: str) -> None:
             raw = await websocket.receive_json()
             update = BoardPostureUpdate(**{**raw, "bed_id": bed_id})
             store.set_posture(bed_id, update.current_posture)
+            store.set_in_camera(bed_id, update.in_camera)
     except WebSocketDisconnect:
         pass

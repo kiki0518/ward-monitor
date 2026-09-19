@@ -45,6 +45,8 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 
 姿勢分類（站/坐/躺/舉手）由 board 算好，透過 `/ws/room/{bed_id}?role=board`（跟影像分開的另一條連線）傳給 backend，backend 只是存放/轉發，不自己做分類。
 
+**跌倒判斷也是 board 自己做，不是 backend 從姿勢轉換速度去推斷**：board 判斷「這是疑似跌倒」之後，呼叫 `POST /api/beds/{bed_id}/possible-fall` 回報，backend 收到就直接建立/更新 `possible_fall` 事件，不重新驗證。這是離散事件（board 判斷出一次跌倒才呼叫一次），不是持續串流，所以走 REST 而不是 WebSocket，跟姿勢那條連線是分開的兩支。
+
 ## 端點
 
 | 方法 | 路徑 | 用途 |
@@ -53,6 +55,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | WS | `/ws/overview` | 全床摘要，持續推送（總覽頁用） |
 | WS | `/ws/room/{bed_id}`（`?role=viewer`，預設值） | 單床 state（vitals+active_events+current_posture），詳細頁用，進頁才連線 |
 | WS | `/ws/room/{bed_id}?role=board` | Board 端連線，上傳 `current_posture`（見下方 `BoardPostureUpdate`） |
+| POST | `/api/beds/{bed_id}/possible-fall` | Board 端回報「疑似跌倒」（見下方 `PossibleFallReport`），board 自己判斷完才呼叫 |
 | WS | `/ws/camera/publish` | Board（攝影機端）上傳 JPEG（binary），全域單一 camera |
 | WS | `/ws/camera/view` | RoomDetail 頁拉取最新 JPEG（binary），全域單一 camera |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
@@ -200,7 +203,8 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
   "ts": "2026-09-19T14:32:10Z",
   "vitals": { "...": "見上方 Vitals" },
   "active_events": [ "...WardAgentOutput 陣列..." ],
-  "current_posture": "lying"
+  "current_posture": "lying",
+  "in_camera": true
 }
 ```
 
@@ -212,11 +216,13 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | `vitals` | `Vitals` | 見上方 `Vitals` schema |
 | `active_events` | `WardAgentOutput[]` | 目前所有 `resolved_at` 為 `null` 的事件；可以是空陣列（代表無事件） |
 | `current_posture` | enum \| null | `standing`（站）/ `sitting`（坐）/ `lying`（躺）/ `raising_hand`（舉手）。由 board 直接算好傳過來（`streaming/movenet_pose.py` 的 `stable_pose`），backend 只是存放轉發；模擬房間、board 還沒送過資料、或 board 判斷為 `unknown` 時為 `null` |
+| `in_camera` | boolean \| null | 畫面裡有沒有偵測到人，由 board 傳過來。`false` 代表沒偵測到人（`current_posture` 這時一定也是 `null`）；`true` + `current_posture: null` 代表有偵測到人但姿勢判斷不出來（`unknown`）。模擬房間、board 還沒送過資料時為 `null` |
 
 ### `BoardPostureUpdate`（board 連到 `/ws/room/{bed_id}?role=board` 上傳的訊息）
 ```json
 {
   "ts": "2026-09-19T14:32:10Z",
+  "in_camera": true,
   "current_posture": "lying"
 }
 ```
@@ -224,9 +230,21 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | 欄位 | 型別 | 可能值 / 說明 |
 |---|---|---|
 | `ts` | datetime (ISO 8601, UTC) | board 這筆姿勢判斷的時間 |
+| `in_camera` | boolean（必填） | 同 `RoomDetailUpdate.in_camera`，但這裡是必填——沒送這個欄位 backend 會拒絕整筆訊息 |
 | `current_posture` | enum \| null | 同 `RoomDetailUpdate.current_posture` 的列舉值 |
 
 `bed_id` 不用放在訊息內容裡，已經在連線網址 `/ws/room/{bed_id}` 裡了。這條連線不傳影像——影像走 `/ws/camera/publish`，是完全獨立的另一條 pipe（見上方「資料流」）。
+
+### `PossibleFallReport`（`POST /api/beds/{bed_id}/possible-fall` 的 request body）
+```json
+{ "ts": "2026-09-19T14:32:10Z" }
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `ts` | datetime (ISO 8601, UTC) | board 判斷出疑似跌倒的時間 |
+
+`bed_id` 一樣不用放在 body 裡，已經在網址裡了。Response 是建立/更新後的 `WardAgentOutput`（`state: "possible_fall"`），跟 `GET /api/beds/{bed_id}/events` 回傳的元素格式相同。重複回報同一場跌倒（例如板子每隔幾秒重新確認一次還是跌倒）不會開出多筆事件——後端用既有的去重規則（同 `bed_id` + `state` 已有 active 事件就更新 `last_seen_at`，不開新的），board 端不用自己記得「這場跌倒有沒有回報過」。
 
 ### 攝影機串流（`/camera` 監看頁已移除、`/ws/camera/publish`、`/ws/camera/view`）
 
@@ -287,9 +305,9 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 
 ## 目前狀態
 
-- Backend（`schemas.py`/`store.py`/`simulator.py`/`main.py`）：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（`role=board` 上傳姿勢、`role=viewer` 推送 state+events+`current_posture`）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 都已實作，不是骨架。`current_posture`/`vitals`/事件目前由 `simulator.py` 的背景任務產生假資料（demo 用），board 接上之後直接把假資料來源換掉即可，介面不用動。
+- Backend（`schemas.py`/`store.py`/`simulator.py`/`main.py`）：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（`role=board` 上傳姿勢、`role=viewer` 推送 state+events+`current_posture`）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/beds/{bed_id}/possible-fall`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 都已實作，不是骨架。`current_posture`/`vitals`/事件目前由 `simulator.py` 的背景任務產生假資料（demo 用），board 接上之後直接把假資料來源換掉即可，介面不用動。
 - `backend/app/camera_stream.py`：`/ws/camera/publish`、`/ws/camera/view` 已實作並整併進同一個 FastAPI app；`GET /camera` 監看頁跟 `camera.html` 已移除，backend 只提供串流 API。板子端 GStreamer/MoveNet 程式在 `streaming/`。
 - `backend/app/report_generator.py`：PDF 產生已實作，**摘要文字是假資料**，待接 LLM（見「病例紀錄與匯出報告」）
-- MoveNet 姿勢分類結果目前仍只輸出在板子終端，尚未透過 `/ws/room/{bed_id}?role=board` 上傳給 backend（見 [`BOARD_API_SPEC.md`](./BOARD_API_SPEC.md)）。
+- MoveNet 姿勢分類結果目前仍只輸出在板子終端，尚未透過 `/ws/room/{bed_id}?role=board` 或 `/api/beds/{bed_id}/possible-fall` 上傳給 backend（見 [`BOARD_API_SPEC.md`](./BOARD_API_SPEC.md)）。
 - `frontend/src/components/VideoFeed.jsx`：已改接 `/ws/camera/view` 顯示 JPEG。
 - `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接。

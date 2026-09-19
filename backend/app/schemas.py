@@ -101,6 +101,7 @@ class RoomDetailUpdate(BaseModel):
     vitals: Vitals
     active_events: List[WardAgentOutput]
     current_posture: Optional[Posture] = None
+    in_camera: Optional[bool] = None
 
 
 class BoardPostureUpdate(BaseModel):
@@ -112,6 +113,7 @@ class BoardPostureUpdate(BaseModel):
 
     bed_id: str
     ts: datetime
+    in_camera: bool
     current_posture: Optional[Posture] = None
 
 
@@ -132,3 +134,12 @@ class CaseReport(BaseModel):
     follow_up: str
     notes: str
     resolved_at: datetime
+
+
+class PossibleFallReport(BaseModel):
+    """Board -> backend：POST /api/beds/{bed_id}/possible-fall 的 request body。
+
+    Board 已經自己判斷完「這是疑似跌倒」，backend 不重新驗證，收到就建立/更新事件。
+    """
+
+    ts: datetime
