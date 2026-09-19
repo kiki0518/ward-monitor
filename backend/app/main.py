@@ -1,4 +1,4 @@
-# B3 負責：FastAPI server + WebSocket，是前端唯一要對接的入口
+# FastAPI server + WebSocket，是前端唯一要對接的入口
 # 對應 API_CONTRACT.md：
 #   GET  /api/beds                      -> 床位靜態名冊
 #   WS   /ws/overview                   -> 總覽頁，持續推送 OverviewUpdate[]
@@ -6,14 +6,28 @@
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理
 
 import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import store
+from app import simulator, store
 from app.schemas import BedInfo, RoomDetailUpdate, WardAgentOutput
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    store.seed_demo_data()
+    background_tasks = [
+        asyncio.create_task(simulator.run_vitals_jitter()),
+        asyncio.create_task(simulator.run_event_script()),
+    ]
+    yield
+    for task in background_tasks:
+        task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,8 +35,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-store.seed_demo_data()
 
 
 @app.get("/")
@@ -79,7 +91,7 @@ async def ws_room(websocket: WebSocket, bed_id: str):
     try:
         while True:
             # TODO: WebRTC signaling relay — 收到的 webrtc_offer/webrtc_answer/webrtc_ice
-            # 要轉發給同一個 bed_id 上的另一方（board 或瀏覽器）。B1 的 WebRTC 還沒接上，
+            # 要轉發給同一個 bed_id 上的另一方（board 或瀏覽器）。Board 端的 WebRTC 還沒接上，
             # 先只是收下不處理，避免連線被塞爆。
             await websocket.receive_json()
     except WebSocketDisconnect:

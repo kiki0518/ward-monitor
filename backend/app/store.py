@@ -1,4 +1,4 @@
-# B3 負責：in-memory 資料存放，對應 API_CONTRACT.md
+# in-memory 資料存放，對應 API_CONTRACT.md
 #
 # 三種資料分開存：
 #   - _beds：床位靜態名冊 (BedInfo)，從 app/data/beds.csv 讀入，GET /api/beds 用
@@ -85,6 +85,30 @@ def bed_exists(bed_id: str) -> bool:
 
 def get_vitals(bed_id: str) -> Optional[Vitals]:
     return _vitals.get(bed_id)
+
+
+def set_vitals(
+    bed_id: str,
+    *,
+    bp_systolic: int,
+    bp_diastolic: int,
+    temperature: float,
+    heart_rate: int,
+    spo2: int,
+) -> None:
+    _vitals[bed_id] = Vitals(
+        bed_id=bed_id,
+        bp_systolic=bp_systolic,
+        bp_diastolic=bp_diastolic,
+        temperature=temperature,
+        heart_rate=heart_rate,
+        spo2=spo2,
+        ts=datetime.now(timezone.utc),
+    )
+
+
+def add_event(event: WardAgentOutput) -> None:
+    _events.setdefault(event.bed_id, []).append(event)
 
 
 def get_active_events(bed_id: str) -> list[WardAgentOutput]:
