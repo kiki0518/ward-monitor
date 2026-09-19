@@ -34,6 +34,11 @@ from app.schemas import (
     WardAgentOutput,
 )
 
+# demo 唯一接真的板子的床（見 API_CONTRACT.md/BOARD_API_SPEC.md 的慣例）。
+# current_posture/in_camera 只有這床應該來自 /ws/room/{bed_id}?role=board 的真實資料；
+# 其他床由 simulator.run_posture_jitter 產生假資料，兩者不會互相覆蓋。
+REAL_BOARD_BED_ID = "101"
+
 _PRIORITY_RANK = {"green": 0, "yellow": 1, "red": 2}
 _GENDER_FROM_CSV = {"男": "male", "女": "female"}
 _BEDS_CSV_PATH = Path(__file__).parent / "data" / "beds.csv"

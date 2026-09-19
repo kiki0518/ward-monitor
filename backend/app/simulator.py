@@ -12,8 +12,10 @@ import random
 
 from app import store
 from app.location_rules import evaluate_location
-from app.schemas import EventLocation, EventState, Priority
+from app.schemas import EventLocation, EventState, Posture, Priority
 from app.vitals_scoring import evaluate_vitals
+
+_POSTURE_CHOICES: list[Posture] = ["standing", "sitting", "lying"]
 
 # (state, reason, location) 的假事件劇本庫，模擬 Ward Agent 判斷出的結果
 # 注意：abnormal_vitals、night_wandering、prolonged_bathroom 都不在這裡——這三個
@@ -46,6 +48,26 @@ async def run_vitals_jitter(interval_seconds: float = 2.0) -> None:
                 heart_rate=round(_jitter(vitals.heart_rate, 4, 50, 130)),
                 spo2=round(_jitter(vitals.spo2, 1, 90, 100)),
             )
+        await asyncio.sleep(interval_seconds)
+
+
+async def run_posture_jitter(interval_seconds: float = 15.0, change_probability: float = 0.3) -> None:
+    """Mock 姿勢/in_camera：demo 用，模擬除了真實板子那床以外的病患姿勢偶爾改變、偶爾
+    整個人離開鏡頭範圍。真實板子那床（store.REAL_BOARD_BED_ID）完全不會被這個任務動到，
+    它的 current_posture/in_camera 只能來自 /ws/room/{bed_id}?role=board 的真實資料，
+    不然假資料跟真資料會互相搶著寫、板子傳的東西馬上被蓋掉。"""
+    while True:
+        for bed in store.get_all_beds():
+            if bed.bed_id == store.REAL_BOARD_BED_ID:
+                continue
+            if random.random() < change_probability:
+                if random.random() < 0.15:
+                    # 偶爾整個人離開鏡頭範圍：現實中「看不到人」時姿勢也判斷不出來
+                    store.set_in_camera(bed.bed_id, False)
+                    store.set_posture(bed.bed_id, None)
+                else:
+                    store.set_in_camera(bed.bed_id, True)
+                    store.set_posture(bed.bed_id, random.choice(_POSTURE_CHOICES))
         await asyncio.sleep(interval_seconds)
 
 
