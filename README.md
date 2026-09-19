@@ -44,6 +44,11 @@ ward-monitor/
 
 ## 啟動方式
 
+### Camera 即時監看實驗
+
+單獨測試「開發板 camera → server → 瀏覽器」請看 [streaming/README.md](streaming/README.md)。
+使用 GStreamer 推送 H.264 / RTSP，由 MediaMTX 提供 WebRTC 觀看頁，不需先啟動下方服務。
+
 ### Backend
 ```bash
 cd backend

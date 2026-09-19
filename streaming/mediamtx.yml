@@ -1,0 +1,27 @@
+# Isolated LAN experiment: one camera, live viewing only.
+logLevel: info
+rtsp: true
+rtspTransports: [tcp]
+rtmp: false
+hls: false
+srt: false
+moq: false
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: false
+api: false
+metrics: false
+playback: false
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: publish
+        path: camera
+      - action: read
+        path: camera
+paths:
+  camera:
+    source: publisher
+    overridePublisher: false
+    record: false
