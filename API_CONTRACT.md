@@ -39,13 +39,22 @@ B3 只在 /ws/room/{bed_id} 上轉發 SDP/ICE signaling，不經手影像本身�
 
 ### `BedInfo`（`GET /api/beds` 回傳陣列的元素）
 ```json
-{ "bed_id": "101", "patient_name": "王小明" }
+{
+  "bed_id": "101",
+  "patient_name": "王建國",
+  "gender": "male",
+  "age": 78,
+  "diagnosis": "腦中風後遺症"
+}
 ```
 
 | 欄位 | 型別 | 可能值 / 說明 |
 |---|---|---|
 | `bed_id` | string | 床號，例如 `"101"`；全系統的床位識別碼，其他所有 schema 都用同一組值對應 |
 | `patient_name` | string | 病患姓名 |
+| `gender` | enum | `"male"` / `"female"` |
+| `age` | int | 病患年齡 |
+| `diagnosis` | string | 病因/診斷，人類可讀，例如「腦中風後遺症」「髖關節骨折術後」，demo 用固定假資料，見 `backend/app/data/beds.csv` |
 
 ### `OverviewUpdate`（`/ws/overview` 推送）
 ```json

@@ -9,6 +9,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel
 
 Priority = Literal["green", "yellow", "red"]
+Gender = Literal["male", "female"]
 EventState = Literal[
     "bed_exit",
     "possible_fall",
@@ -50,6 +51,9 @@ class BedInfo(BaseModel):
 
     bed_id: str
     patient_name: str
+    gender: Gender
+    age: int
+    diagnosis: str
 
 
 class OverviewUpdate(BaseModel):

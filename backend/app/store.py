@@ -1,7 +1,7 @@
 # B3 負責：in-memory 資料存放，對應 API_CONTRACT.md
 #
 # 三種資料分開存：
-#   - _beds：床位靜態名冊 (BedInfo)，只有 bed_id/patient_name，GET /api/beds 用
+#   - _beds：床位靜態名冊 (BedInfo)，從 app/data/beds.csv 讀入，GET /api/beds 用
 #   - _vitals：每個床位最新一筆生理數據 (Vitals)
 #   - _events：每個床位的事件列表 (WardAgentOutput)，resolved_at 為 None 代表 active
 #
@@ -9,34 +9,45 @@
 # （resolved_at is None）的事件裡取 priority 最高的一筆；沒有 active 事件時
 # 固定是 green /「生理數據正常」。
 
+import csv
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from app.schemas import BedInfo, OverviewUpdate, Vitals, WardAgentOutput
 
 _PRIORITY_RANK = {"green": 0, "yellow": 1, "red": 2}
+_GENDER_FROM_CSV = {"男": "male", "女": "female"}
+_BEDS_CSV_PATH = Path(__file__).parent / "data" / "beds.csv"
 
 _beds: dict[str, BedInfo] = {}
 _vitals: dict[str, Vitals] = {}
 _events: dict[str, list[WardAgentOutput]] = {}
 
 
+def _load_beds_from_csv() -> list[BedInfo]:
+    with _BEDS_CSV_PATH.open(encoding="utf-8") as f:
+        return [
+            BedInfo(
+                bed_id=row["bed_id"],
+                patient_name=row["patient_name"],
+                gender=_GENDER_FROM_CSV[row["gender"]],
+                age=int(row["age"]),
+                diagnosis=row["diagnosis"],
+            )
+            for row in csv.DictReader(f)
+        ]
+
+
 def seed_demo_data() -> None:
-    """Demo 用假資料：5 個床位，103 有一筆尚未處理的疑似跌倒事件當劇本。"""
+    """Demo 用假資料：床位名冊從 beds.csv 讀入，103 有一筆尚未處理的疑似跌倒事件當劇本。"""
     _beds.clear()
     _vitals.clear()
     _events.clear()
 
     now = datetime.now(timezone.utc)
 
-    demo_beds = [
-        BedInfo(bed_id="101", patient_name="王OO"),
-        BedInfo(bed_id="102", patient_name="陳OO"),
-        BedInfo(bed_id="103", patient_name="林OO"),
-        BedInfo(bed_id="104", patient_name="張OO"),
-        BedInfo(bed_id="105", patient_name="黃OO"),
-    ]
-    for bed in demo_beds:
+    for bed in _load_beds_from_csv():
         _beds[bed.bed_id] = bed
         _events[bed.bed_id] = []
         _vitals[bed.bed_id] = Vitals(
