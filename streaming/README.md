@@ -148,13 +148,231 @@ python3 -m unittest discover -s streaming/tests -v
 測試包含 JPEG bytes 保留、RGB / 量化處理、姿勢規則、慢推論丟舊圖、
 以及模擬網路／推論互不等待。這些是單元測試，並不取代板子的 camera、GStreamer tee 與 NPU 實機測試。
 
-## 協定
+## Streaming API spec
 
-- `/ws/camera/publish`：server 先回 `ready`；每則 binary message 是完整 JPEG，server 回 `ok`。
-  上限 2 MiB，10 秒沒送新影像則斷線。只檢查 JPEG 頭尾，不進行完整解碼驗證。
-- `/ws/camera/view`：觀看端送文字 `next`，server 回最新 JPEG 或 JSON
-  `{"status":"waiting"}` / `{"status":"unchanged"}`。一次只應有一個未完成請求。
-- `/camera`：FastAPI 提供的監看頁，顯示尺寸、實際接收 FPS、最近影像大小與連線狀態。
+以下描述目前 `backend/app/camera_stream.py`、`backend/app/main.py` 與
+`streaming/publish_camera.py` 的實作，不代表尚未實作的規劃。
+
+### 連線設定與端點
+
+範例 server：`192.168.1.100:8000`。所有服務共用 TCP 8000。
+預設使用 HTTP / WS，沒有登入、token、WebSocket subprotocol 或房間識別參數。
+若另行部署 TLS reverse proxy，觀看頁會依 HTTPS 自動使用 WSS；目前板子 CLI 固定使用 WS。
+
+| 協定 | 路徑 | 呼叫端 | 用途 |
+| --- | --- | --- | --- |
+| HTTP GET | `/` | 任意 HTTP client | 健康檢查 |
+| HTTP GET | `/camera` | 瀏覽器 | 監看 HTML 頁面 |
+| WebSocket | `/ws/camera/publish` | 開發板 | 發布原始 JPEG |
+| WebSocket | `/ws/camera/view` | 瀏覽器／觀看 client | 依請求取得最新 JPEG |
+
+`/ws` 是原本病房狀態的占位端點，目前接受連線後即關閉，不能用來傳影像。
+WebSocket 協定不列入 FastAPI OpenAPI；`/camera` 也設定了 `include_in_schema=False`，
+因此 `/docs` 不是這份串流協定的完整清單。
+
+### HTTP GET `/`
+
+無 request body。成功回應為 HTTP 200，Content-Type 為 `application/json`：
+
+```json
+{"status":"ok"}
+```
+
+只代表 FastAPI 可回應，不代表 camera 已連上或影像仍在更新。
+
+### HTTP GET `/camera`
+
+無 request body。成功回應為 HTTP 200、HTML 文件，帶 `Cache-Control: no-store`。
+頁面透過同主機的 `/ws/camera/view` 取圖，顯示影像尺寸、實際接收 FPS、最近一張大小與狀態。
+這不是直接輸出影片的 HTTP endpoint，也不是 `multipart/x-mixed-replace` MJPEG response；
+不可把這個網址當成 JPEG 或直接放入 `<video src>`。
+
+### 共用影像格式
+
+| 項目 | 格式／限制 |
+| --- | --- |
+| WebSocket message type | Binary |
+| Payload | 一張完整 JPEG 的 bytes |
+| 應用層包裝 | 無 JSON、Base64、長度前綴或自訂 header |
+| 單張大小 | 4～2,097,152 bytes（2 MiB），含上下限 |
+| JPEG 頭尾 | 起始 `FF D8`，結尾 `FF D9` |
+| 格式檢查 | 僅檢查大小與頭尾，不驗證 JPEG 內部結構 |
+| 解析度、FPS | API 未固定；板子預設 640×480、15 FPS |
+| Metadata | 未傳送 frame ID、timestamp、camera ID、房間 ID 或姿勢結果 |
+
+「一張」以完整 WebSocket message 為界，不以 TCP packet 或底層 WebSocket fragment 為界。
+JPEG bytes 原樣轉送，server 不解碼、不重新編碼、不錄影。
+即使收到 `ok`，也可能因 JPEG 內部損壞而無法在瀏覽器解碼。
+
+### WebSocket `/ws/camera/publish`：板子發布
+
+```text
+ws://192.168.1.100:8000/ws/camera/publish
+```
+
+沒有 request body 或必填 query parameter。訊息順序如下：
+
+```text
+板子                                  Server
+  ├──── WebSocket handshake ────────────→│
+  │←─── Text: ready ────────────────────┤
+  ├──── Binary: 完整 JPEG ──────────────→│
+  │←─── Text: ok ───────────────────────┤
+  ├──── Binary: 下一張完整 JPEG ────────→│
+  │←─── Text: ok ───────────────────────┤
+```
+
+`ready` 與 `ok` 都是純文字，沒有 JSON 引號或物件包裝。
+
+1. Server 接受 WebSocket 後，若沒有其他發布者，登記連線並送出 `ready`。
+2. 板子等到 `ready` 才開始送圖，每次只送一張完整 JPEG。
+3. Server 檢查格式後，覆寫最新影像、更新內部序號及接收時間，再回 `ok`。
+4. 板子收到 `ok` 後才從 camera 緩衝取下一張；不要預先累積待送影像。
+5. `ok` 表示 server 已接收並更新最新影像，不保證任何觀看者已收到或顯示。
+
+同時只允許一個發布者。第二個發布者的 WebSocket 會先被接受，再以 close code `1008`
+關閉，不會收到 `ready`，也不會取代原發布者。
+
+每次等待下一則上傳訊息的期限為 10 秒，送出 ACK 的期限為 5 秒。
+發布者離線、格式錯誤或逾時後，server 釋放發布者並清除最新影像；重新連線要重新等 `ready`。
+
+### WebSocket `/ws/camera/view`：前端觀看
+
+```text
+ws://192.168.1.100:8000/ws/camera/view
+```
+
+Server 接受連線後不主動送 `ready` 或影像。觀看端必須先送純文字 `next`：
+
+```text
+觀看端                                Server
+  ├──── WebSocket handshake ────────────→│
+  ├──── Text: next ─────────────────────→│
+  │←─── Binary: 最新 JPEG ──────────────┤
+  │     解碼、顯示，釋放 Blob URL         │
+  ├──── Text: next ─────────────────────→│
+  │←─── Binary JPEG 或 Text JSON ───────┤
+```
+
+一個 `next` 對應一則回應；回應類型如下：
+
+| 類型 | 內容 | 意義與前端處理 |
+| --- | --- | --- |
+| Binary | JPEG bytes | 解碼並顯示；完成後才送下一個 `next` |
+| Text JSON | `{"status":"waiting"}` | 沒有可用的新鮮影像；隱藏舊畫面，繼續請求 |
+| Text JSON | `{"status":"unchanged"}` | 最新影像仍有效，但與上次回應的序號相同；可保留畫面並繼續請求 |
+
+`waiting` 不區分尚未開機、發布者斷線或影像過期，不能用它判斷確切原因。
+狀態是 JSON 文字訊息，應先以訊息型別區分 JPEG 與 JSON，再解析 JSON。
+
+- 每個觀看端一次只應保留一個未完成的 `next`，不要用計時器無限制送請求。
+- Server 若沒有更新的序號且發布者仍在線，最多等待約 1 秒，再回傳當下影像或狀態。
+- 最新 JPEG 距 server 接收時間達 3 秒即過期，回 `waiting`；此時間不是 camera 擷取時間。
+- 初次連線可以取得最近一張尚未過期的影像，後續只取較新的影像。
+- 多個觀看者各自記錄已回應的序號，慢的觀看者直接跳到最新影像，不補播漏看的畫面。
+- 沒有發布者時，server 回狀態後暫停 0.2 秒再處理下一個請求，避免空轉。
+- 每次等待觀看端的下一個 `next` 最多 30 秒；送出 JPEG 最多等待 5 秒。
+- JSON 狀態送出目前沒有另外設定應用層 5 秒 timeout。
+
+### 關閉碼與錯誤處理
+
+錯誤透過 WebSocket close 回報，不是 HTTP JSON error body。
+
+| Code | 端點／情境 | 目前 reason |
+| --- | --- | --- |
+| `1008` | publish：已有發布者 | `A camera is already publishing` |
+| `1009` | publish：非 binary、少於 4 bytes 或大於 2 MiB | `Expected JPEG bytes, maximum 2 MiB` |
+| `1003` | publish：JPEG 頭尾不符 | `Invalid JPEG envelope` |
+| `1008` | view：收到不是 `next` 的文字 | `Expected next` |
+| `1000` | 應用層逾時後，server 主動正常關閉 | 無特定 reason |
+
+啟动命令的 `--ws-max-size 2097152` 也會在 WebSocket transport 層限制大小；
+超大訊息可能在進入 handler 前就以 `1009` 關閉，此時 reason 不保證與上表相同。
+網路直接斷開時可能無法收到 close frame，不要只靠 close code 判斷是否需要重連。
+
+view 端的 binary request 不在協定內；目前 handler 使用 `receive_text()`，
+未替這種誤用定義穩定的 close code。請始終送文字 `next`。
+正常收到 `waiting` 或 `unchanged` 不需要重新連線，繼續送下一個 `next` 即可。
+
+### 逾時與現有 client 重連行為
+
+| 所在端 | 行為 | 期限／間隔 |
+| --- | --- | --- |
+| Server | 等待發布端下一則訊息 | 10 秒 |
+| Server | 送出發布 ACK | 5 秒 |
+| Server | 等待觀看端下一個請求 | 30 秒 |
+| Server | 等待更新影像 | 最多約 1 秒 |
+| Server | 送出觀看端 JPEG | 5 秒 |
+| Server | 影像新鮮度 | 接收後小於 3 秒 |
+| 板子 client | 建立連線、等 `ready`、等 `ok` | 各 5 秒 |
+| 板子 client | 可恢復的連線錯誤／斷線後重試 | 每次失敗後等 2 秒 |
+| 內建監看頁 | WebSocket 關閉後重連 | 2 秒 |
+
+板子收到 `1003`、`1008`、`1009` 視為拒絕發布並退出，修正原因後重啟。
+內建頁面解碼完成才要求下一張，並釋放 Blob URL；約每秒檢查是否超過 3 秒沒有成功顯示新圖，
+過期時隱藏舊畫面，避免將凍結影像誤認為即時影像。
+上述重試是現有 client 的行為，不是 server 自動重建 client 連線。
+
+### 最小 client 範例
+
+Python 發布一張既有 JPEG，驗證 handshake 與 ACK（需 websockets 14～15）：
+
+```python
+from pathlib import Path
+from websockets.sync.client import connect
+
+with connect("ws://192.168.1.100:8000/ws/camera/publish", compression=None) as ws:
+    assert ws.recv(timeout=5) == "ready"
+    ws.send(Path("frame.jpg").read_bytes())
+    assert ws.recv(timeout=5) == "ok"
+```
+
+此範例只測上傳；離開 `with` 會立刻斷線並清除 server 的影像。
+持續監看請使用上方 `publish_camera.py` 或 `movenet_test.py` 指令。
+
+瀏覽器最小取圖範例（放在 server 同來源的網頁；完整重連與狀態處理見 `backend/app/camera.html`）：
+
+```html
+<img id="camera-preview" alt="Camera" hidden>
+<script>
+const image = document.querySelector('#camera-preview');
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${protocol}//${location.host}/ws/camera/view`);
+ws.binaryType = 'blob';
+const next = () => {
+  if (ws.readyState === WebSocket.OPEN) ws.send('next');
+};
+ws.onopen = next;
+ws.onmessage = async ({data}) => {
+  if (typeof data === 'string') {
+    if (JSON.parse(data).status === 'waiting') image.hidden = true;
+  } else {
+    const url = URL.createObjectURL(new Blob([data], {type: 'image/jpeg'}));
+    try {
+      image.src = url;
+      await image.decode();
+      image.hidden = ws.readyState !== WebSocket.OPEN;
+    } catch {
+      image.hidden = true;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  next();
+};
+ws.onclose = () => { image.hidden = true; };
+</script>
+```
+
+### 狀態儲存與未提供的功能
+
+Server 在單一 process 記憶體保留最新 JPEG、接收時間與遞增序號；序號只供 server 內部比較，
+不會放在訊息內。重啟 server 會清空狀態，所以部署必須使用單一 worker。
+不同觀看端可以收到不同影像，協定不保證每張都送達所有觀看者。
+
+目前沒有多 camera／房間路由、歷史影像、錄影下載、影像 metadata、Pose JSON、骨架疊圖或認證 API。
+MoveNet 推論結果仍只在板子終端輸出。若要同步骨架與畫面，需另增 frame ID／timestamp 與資料協定，
+不能把姿勢 JSON 混送到現有 publish 端點。
 
 ## 驗收與排錯
 
