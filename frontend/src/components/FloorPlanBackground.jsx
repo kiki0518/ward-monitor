@@ -9,7 +9,7 @@ export default function FloorPlanBackground() {
   return (
     <svg
       viewBox={`0 0 ${FLOOR_PLAN_VIEWBOX.width} ${FLOOR_PLAN_VIEWBOX.height}`}
-      className="floor-plan-bg bg-slate-50 rounded-xl"
+      className="floor-plan-bg rounded-xl"
       preserveAspectRatio="xMidYMid meet"
     >
       {/* 房間分間線：統一線寬/顏色，外牆與隔間不做粗細區分 */}
@@ -20,7 +20,7 @@ export default function FloorPlanBackground() {
           y={room.y}
           width={room.width}
           height={room.height}
-          className="fill-white stroke-slate-400"
+          className="fill-white stroke-[#8da9a0]"
           strokeWidth="1.5"
         />
       ))}
@@ -31,7 +31,7 @@ export default function FloorPlanBackground() {
         y1={NURSES_STATION.y}
         x2={NURSES_STATION.x}
         y2={NURSES_STATION.y + NURSES_STATION.height}
-        className="stroke-slate-400"
+        className="stroke-[#8da9a0]"
         strokeWidth="1.5"
       />
 
@@ -39,11 +39,11 @@ export default function FloorPlanBackground() {
       {FLOOR_PLAN_ROOMS.map((room, roomIndex) => {
         const doorX = room.x + room.width / 2 - 15;
         const doorY = room.doorSide === "bottom" ? room.y + room.height - 1 : room.y - 1;
-        return <rect key={roomIndex} x={doorX} y={doorY} width="30" height="2" className="fill-slate-50" />;
+        return <rect key={roomIndex} x={doorX} y={doorY} width="30" height="2" className="fill-white" />;
       })}
 
       {/* 主走廊 */}
-      <text x="300" y="305" textAnchor="middle" className="fill-slate-400 text-[13px] font-medium tracking-[4px]">
+      <text x="300" y="305" textAnchor="middle" className="fill-[#91a7a0] text-[13px] font-medium tracking-[4px]">
         主走廊
       </text>
 
@@ -54,14 +54,14 @@ export default function FloorPlanBackground() {
         width={NURSES_STATION.width}
         height={NURSES_STATION.height}
         rx="20"
-        className="fill-teal-500/10"
+        className="fill-[#16796b]/10"
       />
       <path
         d={`M ${NURSES_STATION.x + 50} ${NURSES_STATION.y + 130}
             L ${NURSES_STATION.x + 50} ${NURSES_STATION.y + 30}
             L ${NURSES_STATION.x + 450} ${NURSES_STATION.y + 30}
             L ${NURSES_STATION.x + 450} ${NURSES_STATION.y + 130}`}
-        className="fill-none stroke-teal-300"
+        className="fill-none stroke-[#62b7a6]"
         strokeWidth="8"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -74,14 +74,14 @@ export default function FloorPlanBackground() {
           width="30"
           height="15"
           rx="3"
-          className="fill-white stroke-teal-200"
+          className="fill-white stroke-[#9ed5ca]"
         />
       ))}
       <text
         x={NURSES_STATION.x + NURSES_STATION.width / 2}
         y={NURSES_STATION.y + 100}
         textAnchor="middle"
-        className="fill-teal-700 text-[20px] font-bold tracking-[3px]"
+        className="fill-[#126457] text-[20px] font-bold tracking-[3px]"
       >
         護理站
       </text>
@@ -89,7 +89,7 @@ export default function FloorPlanBackground() {
         x={NURSES_STATION.x + NURSES_STATION.width / 2}
         y={NURSES_STATION.y + 122}
         textAnchor="middle"
-        className="fill-teal-500 text-[11px] tracking-[2px]"
+        className="fill-[#238b7b] text-[11px] tracking-[2px]"
       >
         NURSES&apos; STATION
       </text>

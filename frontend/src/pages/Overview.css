@@ -5,8 +5,17 @@
 
 .overview__toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  position: relative;
+}
+
+.overview__toolbar h1 {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-weight: 800;
 }
 
 .overview__status {

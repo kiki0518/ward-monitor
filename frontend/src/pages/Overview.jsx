@@ -111,8 +111,8 @@ export default function Overview() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-4">病房總覽</h1>
+      <div className="min-h-screen bg-white p-8">
+        <h1 className="text-2xl font-bold text-[#18332d] mb-4">病房總覽</h1>
         <p className="text-sm text-red-600">無法連接伺服器，請確認後端已啟動</p>
       </div>
     );
@@ -120,9 +120,9 @@ export default function Overview() {
 
   if (!beds) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-4">病房總覽</h1>
-        <p className="text-sm text-slate-400">載入中...</p>
+      <div className="min-h-screen bg-white p-8">
+        <h1 className="text-2xl font-bold text-[#18332d] mb-4">病房總覽</h1>
+        <p className="text-sm text-[#82958e]">載入中...</p>
       </div>
     );
   }
@@ -139,10 +139,10 @@ export default function Overview() {
             {floorKeys.map((floor) => (
               <button
                 key={floor}
-                className={`relative text-sm px-4 py-1.5 rounded-full transition-colors ${
+                className={`relative text-sm px-4 py-1.5 rounded-full transition-colors hover:bg-[#e5f0eb] hover:text-[#16796b] hover:shadow-sm ${
                   floor === activeFloor
-                    ? "bg-white shadow-sm text-slate-900 font-medium"
-                    : "text-slate-500 hover:text-slate-700"
+                    ? "bg-white shadow-sm text-[#18332d] font-medium"
+                    : "text-[#6c8179]"
                 }`}
                 onClick={() => setSelectedFloor(floor)}
               >

@@ -3,6 +3,10 @@
   text-align: left;
 }
 
+.room-detail__title {
+  margin: 0 0 4px;
+}
+
 .room-detail__toolbar {
   display: flex;
   justify-content: space-between;
@@ -30,7 +34,7 @@
 }
 
 .room-detail__status {
-  color: #c62828;
+  color: #b93838;
   margin-bottom: 16px;
 }
 

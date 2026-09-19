@@ -1,11 +1,17 @@
 .export-button {
   padding: 6px 16px;
   border-radius: 8px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  color: var(--accent);
+  border: none;
+  background: #24483f;
+  color: #f4f8f6;
   font: inherit;
   cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.export-button:hover:not(:disabled) {
+  background: #18332d;
+  transform: translateY(-1px);
 }
 
 .export-button:disabled {

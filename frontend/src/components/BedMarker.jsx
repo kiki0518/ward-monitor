@@ -8,13 +8,13 @@ import { PRIORITY_LABEL } from "../constants/labels";
 import { formatRelativeTime } from "../utils/relativeTime";
 
 const PIN_STYLE = {
-  green: "bg-emerald-400",
+  green: "bg-[#35a68d]",
   yellow: "bg-amber-400",
   red: "bg-red-500 animate-pulse shadow-[0_0_10px_3px_rgba(239,68,68,0.65)] scale-125",
 };
 
 const BADGE_STYLE = {
-  green: "bg-emerald-100 text-emerald-700",
+  green: "bg-[#dcefe8] text-[#176b5b]",
   yellow: "bg-amber-100 text-amber-700",
   red: "bg-red-100 text-red-700",
 };
@@ -31,26 +31,26 @@ export default function BedMarker({ bed, bedLetter, left, top, expandDirection, 
       onBlur={() => onHighlight?.(null)}
     >
       <span
-        className={`flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold text-white border-[1.5px] border-white shadow-sm transition-transform ${PIN_STYLE[bed.priority] ?? "bg-slate-400"} ${
-          highlighted ? "ring-4 ring-offset-1 ring-sky-300 scale-125" : "group-hover:scale-125"
+        className={`flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold text-white border-[1.5px] border-white shadow-sm transition-transform ${PIN_STYLE[bed.priority] ?? "bg-[#91a7a0]"} ${
+          highlighted ? "ring-4 ring-offset-1 ring-[#62b7a6] scale-125" : "group-hover:scale-125"
         }`}
       >
         {bedLetter}
       </span>
       <div
-        className={`absolute left-1/2 -translate-x-1/2 w-44 p-3 rounded-xl border border-slate-200 bg-white text-left shadow-lg opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-visible:opacity-100 ${
+        className={`absolute left-1/2 -translate-x-1/2 w-44 p-3 rounded-xl border border-[#d7e2dc] bg-[#fbfdfb] text-left shadow-lg opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-visible:opacity-100 ${
           expandDirection === "down" ? "top-7" : "bottom-7"
         }`}
       >
         <div className="flex items-center justify-between gap-2 mb-1">
-          <span className="text-sm font-semibold text-slate-900">{bed.bed_id} 床</span>
-          <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${BADGE_STYLE[bed.priority] ?? "bg-slate-100 text-slate-600"}`}>
+          <span className="text-sm font-semibold text-[#18332d]">{bed.bed_id} 床</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${BADGE_STYLE[bed.priority] ?? "bg-[#e7efea] text-[#526c63]"}`}>
             {PRIORITY_LABEL[bed.priority] ?? bed.priority}
           </span>
         </div>
-        <p className="text-sm text-slate-900 mb-0.5">{bed.patient_name}</p>
-        <p className="text-xs text-slate-500">{bed.reason}</p>
-        {bed.updated_at && <p className="text-[11px] text-slate-400 mt-1">{formatRelativeTime(bed.updated_at)}</p>}
+        <p className="text-sm text-[#18332d] mb-0.5">{bed.patient_name}</p>
+        <p className="text-xs text-[#6c8179]">{bed.reason}</p>
+        {bed.updated_at && <p className="text-[11px] text-[#82958e] mt-1">{formatRelativeTime(bed.updated_at)}</p>}
       </div>
     </Link>
   );
