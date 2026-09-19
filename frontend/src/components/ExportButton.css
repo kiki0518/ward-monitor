@@ -1,0 +1,14 @@
+.export-button {
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

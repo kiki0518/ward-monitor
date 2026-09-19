@@ -108,3 +108,22 @@ class WebRTCSignal(BaseModel):
     bed_id: str
     sdp: Optional[str] = None
     candidate: Optional[dict] = None
+
+
+class ResolveReportRequest(BaseModel):
+    """POST /api/events/{event_id}/resolve 的 request body：護理站標記已處理時順便填的病例紀錄"""
+
+    completed_actions: str
+    follow_up: str
+    notes: str = ""
+
+
+class CaseReport(BaseModel):
+    """寫進 case_reports.json 的一筆紀錄：ResolveReportRequest 補上事件/床位/時間資訊"""
+
+    event_id: str
+    bed_id: str
+    completed_actions: str
+    follow_up: str
+    notes: str
+    resolved_at: datetime

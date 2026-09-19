@@ -6,13 +6,21 @@ const API_BASE = "http://127.0.0.1:8000";
 const WS_BASE = "ws://127.0.0.1:8000";
 
 // Board：只負責攝影機畫面（/ws/camera/view），跟本機後端是不同機器
-// need to modify to the correct camera ip
-const CAMERA_WS_BASE = "ws://10.28.50.69:8000";
+// need to modify to the correct camera backend ip
+const CAMERA_WS_BASE = "ws://192.168.1.105:8000";
 
 // GET /api/beds -> list[BedInfo]，進總覽頁前先拉一次床位/病患靜態名冊
 export async function fetchBeds() {
   const res = await fetch(`${API_BASE}/api/beds`);
   if (!res.ok) throw new Error(`fetchBeds failed: ${res.status}`);
+  return res.json();
+}
+
+// GET /api/beds/{bed_id}/events -> 該床目前 active 事件（WardAgentOutput[]）
+// Overview 頁用來把「誤觸」的事件從 priority 判斷裡濾掉（見 DismissedEventsContext）
+export async function fetchBedEvents(bedId) {
+  const res = await fetch(`${API_BASE}/api/beds/${bedId}/events`);
+  if (!res.ok) throw new Error(`fetchBedEvents failed: ${res.status}`);
   return res.json();
 }
 
@@ -99,11 +107,35 @@ export function connectCameraViewSocket(onFrame, onStatus, onError) {
   return { close: () => socket.close() };
 }
 
-// POST /api/events/{event_id}/resolve -> 護理站標記事件已處理
-export async function resolveEvent(eventId) {
+// POST /api/events/{event_id}/resolve -> 護理站標記事件已處理，body 是 ResolveReportRequest
+// { completed_actions, follow_up, notes }，來自 ResolveModal 表單
+export async function resolveEvent(eventId, report) {
   const res = await fetch(`${API_BASE}/api/events/${eventId}/resolve`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(report),
   });
   if (!res.ok) throw new Error(`resolveEvent failed: ${res.status}`);
   return res.json();
+}
+
+// GET /api/beds/{bed_id}/events/history -> 該床已處理事件紀錄，resolved_at 新到舊
+// 這次執行期間才有的紀錄，後端重啟就清空
+export async function fetchEventHistory(bedId) {
+  const res = await fetch(`${API_BASE}/api/beds/${bedId}/events/history`);
+  if (!res.ok) throw new Error(`fetchEventHistory failed: ${res.status}`);
+  return res.json();
+}
+
+// GET /api/reports/export -> 把累積的病例紀錄整理成 PDF，觸發瀏覽器下載
+export async function exportReports() {
+  const res = await fetch(`${API_BASE}/api/reports/export`);
+  if (!res.ok) throw new Error(`exportReports failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "ward-monitor-report.pdf";
+  link.click();
+  URL.revokeObjectURL(url);
 }

@@ -4,13 +4,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { connectCameraViewSocket } from "../services/ws";
-import "./VideoFeed.css";
 
 const STATUS_LABEL = {
   connecting: "連線中",
   live: "已連線",
   waiting: "尚無攝影機畫面",
   disconnected: "連線中斷",
+};
+
+const STATUS_DOT = {
+  connecting: "bg-amber-400",
+  live: "bg-emerald-400",
+  waiting: "bg-slate-400",
+  disconnected: "bg-red-500",
 };
 
 export default function VideoFeed({ bedId }) {
@@ -40,9 +46,12 @@ export default function VideoFeed({ bedId }) {
   }, [bedId]);
 
   return (
-    <div className="video-feed">
-      <img ref={imgRef} className="video-feed__video" alt={`${bedId} 床攝影機畫面`} />
-      <span className="video-feed__status">{STATUS_LABEL[status] ?? status}</span>
+    <div className="relative bg-slate-900 rounded-xl overflow-hidden aspect-video">
+      <img ref={imgRef} className="w-full h-full object-cover" alt={`${bedId} 床攝影機畫面`} />
+      <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-xs">
+        <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-slate-400"}`} />
+        {STATUS_LABEL[status] ?? status}
+      </span>
     </div>
   );
 }

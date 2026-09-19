@@ -60,18 +60,33 @@
   margin-bottom: 4px;
 }
 
-.events-list__resolve {
+.events-list__actions {
+  display: flex;
+  gap: 8px;
   margin-top: 6px;
+}
+
+.events-list__resolve,
+.events-list__dismiss {
   padding: 6px 14px;
   border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.events-list__resolve {
   border: 1px solid var(--accent-border);
   background: var(--accent-bg);
   color: var(--accent);
-  font: inherit;
-  cursor: pointer;
 }
 
 .events-list__resolve:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.events-list__dismiss {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
 }
