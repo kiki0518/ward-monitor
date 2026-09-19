@@ -90,7 +90,7 @@ Board 攝影機/姿勢推論     │                           │
 | `priority` | enum | `"green"`（正常）/ `"yellow"`（注意）/ `"red"`（高風險）。對應前端 `RoomCard` 的 `normal`/`warning`/`high`；取該床目前 active events 中優先度最高者，沒有 active event 時固定 `"green"` |
 | `reason` | string | 人類可讀描述。有 active event 時填最高 priority 那個事件的 `reason`；沒有 active event 時固定「生理數據正常」 |
 | `active_event_count` | int | 該床目前 active 事件總數（`resolved_at` 為 `null` 的筆數）。Overview 卡片只顯示最高 priority 那一筆的 `reason`，這個欄位讓卡片能額外提示「還有其他 N 個事件」，不用把整個 `active_events` 陣列塞進 Overview payload |
-| `updated_at` | datetime (ISO 8601, UTC) | 例如 `"2026-09-19T14:32:10Z"`，這筆摘要的產生時間 |
+| `updated_at` | datetime (ISO 8601, UTC) | 例如 `"2026-09-19T14:32:10Z"`。有 active event 時是那筆事件的 `started_at`（異常從什麼時候開始），不是這次推送/計算摘要的時間；沒有 active event 時固定是查詢當下時間 |
 
 ### `WardAgentOutput`（事件，`RoomDetailUpdate.active_events` 的元素，也是 `resolve`/查詢的回傳值）
 ```json

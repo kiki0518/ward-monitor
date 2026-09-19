@@ -207,7 +207,9 @@ def get_overview(bed_id: str) -> OverviewUpdate:
         priority=top.priority,
         reason=top.reason,
         active_event_count=len(active),
-        updated_at=datetime.now(timezone.utc),
+        # 用該事件實際開始的時間，不是「這次算出摘要」的時間，這樣前端才能正確
+        # 顯示「異常已持續多久」，不會因為 /ws/overview 每次推送都重算而永遠是剛剛
+        updated_at=top.started_at,
     )
 
 

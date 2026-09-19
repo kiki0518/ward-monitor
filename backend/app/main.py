@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
     store.seed_demo_data()
     background_tasks = [
         asyncio.create_task(simulator.run_vitals_jitter()),
+        asyncio.create_task(simulator.run_vitals_alerting()),
         asyncio.create_task(simulator.run_event_script()),
     ]
     yield

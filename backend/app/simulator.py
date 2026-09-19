@@ -12,15 +12,17 @@ import random
 
 from app import store
 from app.schemas import EventLocation, EventState, Priority
+from app.vitals_scoring import evaluate_vitals
 
 # (state, reason, location) 的假事件劇本庫，模擬 Ward Agent 判斷出的結果
+# 注意：abnormal_vitals 不在這裡——它現在由 run_vitals_alerting 依實際 vitals
+# 數值（NEWS2 改編門檻）產生，不用隨機劇本，避免兩邊各自開一筆互相打架。
 _EVENT_LIBRARY: list[tuple[EventState, str, EventLocation]] = [
     ("bed_exit", "夜間離床超過 5 分鐘", "out_of_bed"),
     ("possible_fall", "疑似跌倒", "out_of_bed"),
     ("abnormal_transition", "偵測到異常姿勢轉換", "in_bed"),
     ("prolonged_sitting", "長時間維持坐姿", "chair"),
     ("night_wandering", "夜間遊蕩", "near_door"),
-    ("abnormal_vitals", "生理數據異常", "in_bed"),
 ]
 
 
@@ -43,6 +45,31 @@ async def run_vitals_jitter(interval_seconds: float = 2.0) -> None:
                 heart_rate=round(_jitter(vitals.heart_rate, 4, 50, 130)),
                 spo2=round(_jitter(vitals.spo2, 1, 90, 100)),
             )
+        await asyncio.sleep(interval_seconds)
+
+
+async def run_vitals_alerting(interval_seconds: float = 2.0) -> None:
+    """依 NEWS2 改編門檻（見 app/vitals_scoring.py）持續評估每床目前的 vitals：
+    數值異常就開新的/更新既有的 abnormal_vitals 事件，恢復正常就自動解除。"""
+    while True:
+        for bed in store.get_all_beds():
+            vitals = store.get_vitals(bed.bed_id)
+            if vitals is None:
+                continue
+            alert = evaluate_vitals(vitals)
+            if alert is None:
+                for event in store.get_active_events(bed.bed_id):
+                    if event.state == "abnormal_vitals":
+                        store.resolve_event(event.event_id)
+            else:
+                store.report_event(
+                    bed.bed_id,
+                    state="abnormal_vitals",
+                    priority=alert.priority,
+                    reason=alert.reason,
+                    location="in_bed",
+                    action="請護理師查看",
+                )
         await asyncio.sleep(interval_seconds)
 
 
