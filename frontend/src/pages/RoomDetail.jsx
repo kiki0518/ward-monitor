@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
 import { useDismissedEvents } from "../context/DismissedEventsContext";
 import { GENDER_LABEL } from "../constants/labels";
@@ -12,7 +13,6 @@ import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
 import EventHistory from "../components/EventHistory";
 import ExportButton from "../components/ExportButton";
-import "./RoomDetail.css";
 
 const VITALS_HISTORY_LIMIT = 30;
 
@@ -68,36 +68,43 @@ function RoomDetailView({ bedId }) {
   const visibleEvents = activeEvents.filter((event) => !dismissedIds.has(event.event_id));
 
   return (
-    <div className="room-detail">
-      <div className="room-detail__toolbar">
-        <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
-          ← 返回
+    <div className="min-h-screen bg-slate-50 p-8">
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft size={16} />
+          返回
         </button>
         <ExportButton />
       </div>
-      <h1>
+      <h1 className="text-2xl font-bold text-slate-900 mb-1">
         {bedId} 床{patient ? ` · ${patient.patient_name}` : ""}
       </h1>
       {patient && (
-        <p className="room-detail__patient-meta">
+        <p className="text-sm text-slate-500 mb-6">
           {GENDER_LABEL[patient.gender] ?? patient.gender}・{patient.age} 歲・{patient.diagnosis}
         </p>
       )}
-      <div className="room-detail__layout">
-        <div>
-          <VideoFeed bedId={bedId} />
-          <section className="room-detail__history">
-            <h2>處理紀錄</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
+        <div className="flex flex-col gap-6">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <VideoFeed bedId={bedId} />
+          </div>
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">處理紀錄</h2>
             <EventHistory bedId={bedId} refreshKey={historyRefresh} />
           </section>
         </div>
-        <div className="room-detail__side">
-          <section>
-            <h2>待處理事件</h2>
+        <div className="flex flex-col gap-6">
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">待處理事件</h2>
             <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
           </section>
-          <section>
-            <h2>生理數據</h2>
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">生理數據</h2>
             <VitalsPanel history={vitalsHistory} />
           </section>
         </div>
