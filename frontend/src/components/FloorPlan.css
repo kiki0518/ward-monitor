@@ -1,21 +1,85 @@
 .floor-plan {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  position: relative;
+  width: 100%;
 }
 
-.floor-plan__row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+.floor-plan-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.floor-plan__corridor {
-  text-align: center;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--code-bg);
+.floor-plan__room-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
   color: var(--text);
-  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fp-wall {
+  fill: none;
+  stroke: var(--text-h);
+  stroke-width: 4;
+}
+
+.fp-room {
+  fill: var(--code-bg);
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.fp-door {
+  fill: var(--bg);
+}
+
+.fp-bed__frame {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.fp-bed__pillow {
+  fill: var(--border);
+}
+
+.fp-corridor-label {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  fill: var(--text);
+}
+
+.fp-station-area {
+  fill: var(--accent-bg);
+  stroke: none;
+}
+
+.fp-station-counter {
+  fill: none;
+  stroke: var(--accent-border);
+  stroke-width: 10;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fp-station-workstation {
+  fill: var(--bg);
+  stroke: var(--border);
+  rx: 2;
+}
+
+.fp-station-label {
+  font-size: 22px;
+  font-weight: 700;
   letter-spacing: 4px;
+  fill: var(--accent);
+}
+
+.fp-station-sublabel {
+  font-size: 11px;
+  letter-spacing: 2px;
+  fill: var(--text);
 }

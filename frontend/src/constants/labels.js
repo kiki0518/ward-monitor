@@ -1,4 +1,4 @@
-// 對應 API_CONTRACT.md 的 enum 中文標籤，RoomCard/EventsList 共用
+// 對應 API_CONTRACT.md 的 enum 中文標籤，BedMarker/AlertPanel/EventsList 共用
 
 export const PRIORITY_LABEL = {
   green: "正常",
