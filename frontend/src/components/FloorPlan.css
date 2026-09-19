@@ -1,0 +1,21 @@
+.floor-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.floor-plan__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.floor-plan__corridor {
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--code-bg);
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: 4px;
+}
