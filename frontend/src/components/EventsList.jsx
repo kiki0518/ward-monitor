@@ -44,40 +44,40 @@ export default function EventsList({ events, onResolved, onDismissed }) {
   return (
     <Fragment>
       {sorted.length === 0 ? (
-        <p className="text-sm text-slate-400 py-3">目前無待處理事件</p>
+        <p className="text-sm text-[#82958e] py-3">目前無待處理事件</p>
       ) : (
         <ul className="flex flex-col gap-2.5">
           {sorted.map((event) => (
             <li
               key={event.event_id}
-              className={`rounded-xl border-l-4 border border-slate-100 bg-white p-3.5 shadow-sm ${
+              className={`rounded-xl border-l-4 border border-[#d7e2dc] bg-[#fbfdfb] p-3.5 shadow-sm ${
                 CARD_STYLE[event.priority] ?? "border-l-slate-300"
               }`}
             >
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-sm font-semibold text-slate-900">
+                <span className="text-sm font-semibold text-[#18332d]">
                   {EVENT_STATE_LABEL[event.state] ?? event.state}
                 </span>
                 <span
                   className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
-                    BADGE_STYLE[event.priority] ?? "bg-slate-100 text-slate-600"
+                    BADGE_STYLE[event.priority] ?? "bg-[#e7efea] text-[#526c63]"
                   }`}
                 >
                   {PRIORITY_LABEL[event.priority] ?? event.priority}
                 </span>
               </div>
-              <p className="text-sm text-slate-700 mb-1">{event.reason}</p>
-              <p className="text-xs text-slate-500 mb-1">時間：{formatRelativeTime(event.started_at)}</p>
-              {event.action && <p className="text-xs text-slate-500 mb-1">建議：{event.action}</p>}
+              <p className="text-sm text-[#36574e] mb-1">{event.reason}</p>
+              <p className="text-xs text-[#6c8179] mb-1">時間：{formatRelativeTime(event.started_at)}</p>
+              {event.action && <p className="text-xs text-[#6c8179] mb-1">建議：{event.action}</p>}
               <div className="flex gap-2 mt-1.5">
                 <button
-                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-[#e1f2eb] text-[#176b5b] hover:bg-[#d2eadf] transition-colors"
                   onClick={() => setResolvingEventId(event.event_id)}
                 >
                   標記已處理
                 </button>
                 <button
-                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-[#f3f5f4] text-[#526c63] hover:bg-[#e7ebe9] transition-colors"
                   onClick={() => onDismissed(event.event_id)}
                 >
                   錯誤判斷

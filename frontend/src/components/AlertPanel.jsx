@@ -45,13 +45,15 @@ export default function AlertPanel({ beds, activeFloor, highlightedBedId, onHigh
   }, [beds, scope, activeFloor]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 sticky top-6">
+    <div className="mt-4 bg-white rounded-2xl shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-5 sticky top-6 border border-[#d7e2dc]">
       <div className="flex flex-col gap-3 mb-4">
-        <h2 className="text-base font-semibold text-slate-900">異常警示</h2>
-        <div className="inline-flex bg-slate-100 rounded-full p-1 gap-1">
+        <h2 className="text-base font-semibold text-[#18332d]">異常警示</h2>
+        <div className="inline-flex bg-[#f3f5f4] rounded-full p-1 gap-1">
           <button
             className={`flex-1 text-xs px-3 py-1.5 rounded-full transition-colors ${
-              scope === "all" ? "bg-white shadow-sm text-slate-900 font-medium" : "text-slate-500 hover:text-slate-700"
+              scope === "all"
+                ? "bg-white shadow-sm text-[#18332d] font-medium"
+                : "text-[#6c8179] hover:bg-[#e5f0eb] hover:text-[#16796b]"
             }`}
             onClick={() => setScope("all")}
           >
@@ -59,7 +61,9 @@ export default function AlertPanel({ beds, activeFloor, highlightedBedId, onHigh
           </button>
           <button
             className={`flex-1 text-xs px-3 py-1.5 rounded-full transition-colors ${
-              scope === "floor" ? "bg-white shadow-sm text-slate-900 font-medium" : "text-slate-500 hover:text-slate-700"
+              scope === "floor"
+                ? "bg-white shadow-sm text-[#18332d] font-medium"
+                : "text-[#6c8179] hover:bg-[#e5f0eb] hover:text-[#16796b]"
             }`}
             onClick={() => setScope("floor")}
           >
@@ -69,7 +73,7 @@ export default function AlertPanel({ beds, activeFloor, highlightedBedId, onHigh
       </div>
 
       {alerts.length === 0 ? (
-        <p className="text-sm text-slate-400 py-3">目前無異常警示</p>
+        <p className="text-sm text-[#82958e] py-3">目前無異常警示</p>
       ) : (
         <ul className="flex flex-col gap-2.5 max-h-[70vh] overflow-y-auto">
           {alerts.map((bed) => {
@@ -79,27 +83,27 @@ export default function AlertPanel({ beds, activeFloor, highlightedBedId, onHigh
               <li key={bed.bed_id}>
                 <Link
                   to={`/room/${bed.bed_id}`}
-                  className={`block rounded-xl border-l-4 bg-white p-3 shadow-sm border border-slate-100 transition-shadow hover:shadow-md ${
+                  className={`block rounded-xl border-l-4 bg-[#fbfdfb] p-3 shadow-sm border border-[#d7e2dc] transition-shadow hover:shadow-md ${
                     CARD_STYLE[bed.priority] ?? "border-l-slate-300"
-                  } ${isHighlighted ? "ring-2 ring-sky-300" : ""}`}
+                  } ${isHighlighted ? "ring-2 ring-[#62b7a6]" : ""}`}
                   onMouseEnter={() => onHighlightBed?.(bed.bed_id)}
                   onMouseLeave={() => onHighlightBed?.(null)}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-sm font-semibold text-slate-900">{bed.bed_id} 床</span>
+                    <span className="text-sm font-semibold text-[#18332d]">{bed.bed_id} 床</span>
                     <span
                       className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
-                        BADGE_STYLE[bed.priority] ?? "bg-slate-100 text-slate-600"
+                        BADGE_STYLE[bed.priority] ?? "bg-[#e7efea] text-[#526c63]"
                       }`}
                     >
                       <Icon size={12} />
                       {PRIORITY_LABEL[bed.priority]}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-700 mb-0.5">{bed.patient_name}</p>
-                  <p className="text-xs text-slate-500">{bed.reason}</p>
+                  <p className="text-sm text-[#36574e] mb-0.5">{bed.patient_name}</p>
+                  <p className="text-xs text-[#6c8179]">{bed.reason}</p>
                   {bed.updated_at && (
-                    <p className="text-[11px] text-slate-400 mt-1">{formatRelativeTime(bed.updated_at)}</p>
+                    <p className="text-[11px] text-[#82958e] mt-1">{formatRelativeTime(bed.updated_at)}</p>
                   )}
                 </Link>
               </li>

@@ -23,13 +23,13 @@
 }
 
 .event-history__item--green {
-  border-left-color: #2e7d32;
+  border-left-color: #238b7b;
 }
 .event-history__item--yellow {
-  border-left-color: #f9a825;
+  border-left-color: #d08a16;
 }
 .event-history__item--red {
-  border-left-color: #c62828;
+  border-left-color: #c43d3d;
 }
 
 .event-history__header {

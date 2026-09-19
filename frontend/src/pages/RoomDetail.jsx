@@ -13,6 +13,7 @@ import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
 import EventHistory from "../components/EventHistory";
 import ExportButton from "../components/ExportButton";
+import "./RoomDetail.css";
 
 const VITALS_HISTORY_LIMIT = 30;
 
@@ -68,11 +69,11 @@ function RoomDetailView({ bedId }) {
   const visibleEvents = activeEvents.filter((event) => !dismissedIds.has(event.event_id));
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen bg-white px-8 pb-8 pt-4">
+      <div className="flex items-center justify-between mb-2">
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-[#6c8179] hover:text-[#18332d] transition-colors"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft size={16} />
@@ -80,31 +81,31 @@ function RoomDetailView({ bedId }) {
         </button>
         <ExportButton />
       </div>
-      <h1 className="text-2xl font-bold text-slate-900 mb-1">
+      <h1 className="room-detail__title text-2xl font-bold text-[#18332d] mb-1">
         {bedId} 床{patient ? ` · ${patient.patient_name}` : ""}
       </h1>
       {patient && (
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-[#6c8179] mb-6">
           {GENDER_LABEL[patient.gender] ?? patient.gender}・{patient.age} 歲・{patient.diagnosis}
         </p>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
         <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+          <div className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <VideoFeed bedId={bedId} />
           </div>
-          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
-            <h2 className="text-base font-semibold text-slate-900 mb-4">處理紀錄</h2>
+          <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
+            <h2 className="text-base font-semibold text-[#18332d] mb-4">處理紀錄</h2>
             <EventHistory bedId={bedId} refreshKey={historyRefresh} />
           </section>
         </div>
         <div className="flex flex-col gap-6">
-          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
-            <h2 className="text-base font-semibold text-slate-900 mb-4">待處理事件</h2>
+          <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
+            <h2 className="text-base font-semibold text-[#18332d] mb-4">待處理事件</h2>
             <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
           </section>
-          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
-            <h2 className="text-base font-semibold text-slate-900 mb-4">生理數據</h2>
+          <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
+            <h2 className="text-base font-semibold text-[#18332d] mb-4">生理數據</h2>
             <VitalsPanel history={vitalsHistory} />
           </section>
         </div>

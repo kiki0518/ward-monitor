@@ -24,7 +24,7 @@ export default function FloorPlan({ beds, highlightedBedId, onHighlightBed }) {
       {roomLabels.map(({ key, label, left, top }) => (
         <span
           key={key}
-          className="absolute -translate-x-1/2 -translate-y-1/2 text-[11px] text-slate-400 pointer-events-none"
+          className="absolute -translate-x-1/2 -translate-y-1/2 text-[11px] text-[#82958e] pointer-events-none"
           style={{ left: `${left}%`, top: `${top}%` }}
         >
           {label}
