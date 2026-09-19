@@ -3,7 +3,7 @@
 // 資料來源：GET /api/beds 拿病患姓名、WS /ws/room/{bed_id} 拿 state(vitals+active_events) + WebRTC signaling
 
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
 import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
@@ -19,6 +19,7 @@ export default function RoomDetail() {
 }
 
 function RoomDetailView({ bedId }) {
+  const navigate = useNavigate();
   const [patientName, setPatientName] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
@@ -60,6 +61,9 @@ function RoomDetailView({ bedId }) {
 
   return (
     <div className="room-detail">
+      <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
+        ← 返回
+      </button>
       <h1>
         {bedId} 床{patientName ? ` · ${patientName}` : ""}
       </h1>

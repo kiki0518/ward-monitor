@@ -2,7 +2,7 @@
 // 體徵面板：心跳/血氧用即時滾動曲線，血壓/體溫用數值卡片
 // history 由 RoomDetail 在收到每筆 WS state 訊息時累積傳入（最近 N 筆 Vitals）
 
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./VitalsPanel.css";
 
 export default function VitalsPanel({ history }) {
@@ -26,6 +26,7 @@ export default function VitalsPanel({ history }) {
           <YAxis yAxisId="hr" domain={[40, 140]} hide />
           <YAxis yAxisId="spo2" domain={[85, 100]} hide />
           <Tooltip />
+          <Legend verticalAlign="top" height={24} />
           <Line yAxisId="hr" type="monotone" dataKey="heart_rate" name="心跳 (bpm)" stroke="#c62828" dot={false} isAnimationActive={false} />
           <Line yAxisId="spo2" type="monotone" dataKey="spo2" name="血氧 (%)" stroke="#1565c0" dot={false} isAnimationActive={false} />
         </LineChart>
