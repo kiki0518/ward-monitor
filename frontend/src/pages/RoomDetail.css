@@ -1,0 +1,42 @@
+.room-detail {
+  padding: 24px;
+  text-align: left;
+}
+
+.room-detail__back {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 12px;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.room-detail__back:hover {
+  text-decoration: underline;
+}
+
+.room-detail__status {
+  color: #c62828;
+  margin-bottom: 16px;
+}
+
+.room-detail__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.room-detail__side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+@media (max-width: 800px) {
+  .room-detail__layout {
+    grid-template-columns: 1fr;
+  }
+}
