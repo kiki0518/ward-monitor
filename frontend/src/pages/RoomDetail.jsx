@@ -1,9 +1,9 @@
 // F2 負責：單病房詳細頁
-// 功能：攝影機畫面（WebRTC）+ 體徵面板 + 待處理事件列表
-// 資料來源：GET /api/beds 拿病患姓名、WS /ws/room/{bed_id} 拿 state(vitals+active_events) + WebRTC signaling
+// 功能：攝影機畫面（/ws/camera/view JPEG relay）+ 體徵面板 + 待處理事件列表
+// 資料來源：GET /api/beds 拿病患姓名、WS /ws/room/{bed_id} 拿 state(vitals+active_events)
 
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
 import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
@@ -19,12 +19,10 @@ export default function RoomDetail() {
 }
 
 function RoomDetailView({ bedId }) {
+  const navigate = useNavigate();
   const [patientName, setPatientName] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
-  const [roomSocket, setRoomSocket] = useState(null);
-  const [error, setError] = useState(false);
-  const signalHandlerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,10 +44,8 @@ function RoomDetailView({ bedId }) {
         setVitalsHistory((prev) => [...prev, state.vitals].slice(-VITALS_HISTORY_LIMIT));
         setActiveEvents(state.active_events);
       },
-      (signal) => signalHandlerRef.current?.(signal),
-      () => setError(true),
+      () => {},
     );
-    setRoomSocket(socket);
 
     return () => socket.close();
   }, [bedId]);
@@ -60,12 +56,14 @@ function RoomDetailView({ bedId }) {
 
   return (
     <div className="room-detail">
+      <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
+        ← 返回
+      </button>
       <h1>
         {bedId} 床{patientName ? ` · ${patientName}` : ""}
       </h1>
-      {error && <p className="room-detail__status">與伺服器的連線中斷</p>}
       <div className="room-detail__layout">
-        <VideoFeed bedId={bedId} roomSocket={roomSocket} onSignalRef={signalHandlerRef} />
+        <VideoFeed bedId={bedId} />
         <div className="room-detail__side">
           <section>
             <h2>生理數據</h2>

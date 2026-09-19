@@ -2,6 +2,14 @@
 
 ## 啟動方式
 
+### Camera 即時監看實驗
+
+單獨測試「開發板 camera → server → 瀏覽器」請看 [streaming/README.md](streaming/README.md)。
+直接轉送 camera 輸出的 MJPEG，透過 WebSocket 傳至 FastAPI；觀看入口為 `http://SERVER_IP:8000/camera`。
+不需 H.264 編碼器、MediaMTX 或 React。請依 streaming 文件用單一 worker 啟動 backend。
+若要同時跑 MoveNet，使用 `python3 streaming/movenet_test.py --server SERVER_IP`；
+預設 `/dev/video2`，同一鏡頭分成原始 JPEG 串流和板子姿勢推論兩路。
+
 ### Backend
 ```bash
 cd backend

@@ -1,7 +1,7 @@
 # 共用資料格式 (Pydantic models)
-# 對應 API_CONTRACT.md（前後端 API 契約，B3 ↔ F1/F2）
-# B1 ↔ B2 之間的姿勢推論/行為判斷內部格式不在 API_CONTRACT.md 範圍內，
-# Keypoints / BehaviorEvent 維持 TODO，由 B1/B2 自行對齊。
+# 對應 API_CONTRACT.md（前後端 API 契約）
+# Board 端姿勢推論/行為判斷內部格式不在 API_CONTRACT.md 範圍內，
+# Keypoints / BehaviorEvent 維持 TODO。
 
 from datetime import datetime
 from typing import List, Literal, Optional
@@ -23,21 +23,21 @@ EventLocation = Literal["in_bed", "out_of_bed", "chair", "near_door", "bathroom"
 
 
 # ---------------------------------------------------------------------------
-# B1/B2 內部資料流 schema：不在 API_CONTRACT.md 範圍內
+# 姿勢推論/行為判斷內部資料流 schema：不在 API_CONTRACT.md 範圍內
 # ---------------------------------------------------------------------------
 
 
 class Keypoints(BaseModel):
-    """B1 輸出：單幀姿勢關鍵點座標"""
+    """Board 輸出：單幀姿勢關鍵點座標"""
 
-    # TODO: 欄位由 B1/B2 自行對齊
+    # TODO: 欄位待對齊
     pass
 
 
 class BehaviorEvent(BaseModel):
-    """B2 (Behavior Engine) 輸出：從關鍵點判斷出的行為狀態/事件"""
+    """behavior_engine 輸出：從關鍵點判斷出的行為狀態/事件"""
 
-    # TODO: 欄位由 B1/B2 自行對齊
+    # TODO: 欄位待對齊
     pass
 
 
@@ -62,11 +62,12 @@ class OverviewUpdate(BaseModel):
     bed_id: str
     priority: Priority
     reason: str
+    active_event_count: int
     updated_at: datetime
 
 
 class WardAgentOutput(BaseModel):
-    """事件：RoomDetailUpdate.active_events 的元素，也是 resolve 的回傳值"""
+    """事件：RoomDetailUpdate.active_events 的元素，也是 resolve/歷史查詢的回傳值"""
 
     event_id: str
     bed_id: str
@@ -76,6 +77,7 @@ class WardAgentOutput(BaseModel):
     location: EventLocation
     action: Optional[str] = None
     started_at: datetime
+    last_seen_at: datetime
     resolved_at: Optional[datetime] = None
 
 
