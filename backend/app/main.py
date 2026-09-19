@@ -6,8 +6,6 @@
 #   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理（idempotent）
 
-from contextlib import asynccontextmanager
-
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -19,20 +17,10 @@ from .camera_stream import CameraStream, router as camera_router
 from app import simulator, store
 from app.schemas import BedInfo, RoomDetailUpdate, WardAgentOutput
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.camera = CameraStream()
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
-app.include_router(camera_router)
-
-
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
     store.seed_demo_data()
     background_tasks = [
         asyncio.create_task(simulator.run_vitals_jitter()),
@@ -44,10 +32,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(camera_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://10.28.50.69:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

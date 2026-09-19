@@ -1,62 +1,47 @@
 // F2 負責
-// 攝影機畫面：瀏覽器發起 WebRTC offer，透過 roomSocket 做 SDP/ICE signaling，
-// 影像本身是 board 與瀏覽器 P2P 直連（同區網，不架 STUN/TURN）
+// 攝影機畫面：透過 /ws/camera/view 用「送 next 換一張」的方式輪詢最新 JPEG frame
+// 全系統目前只有一支攝影機（見 API_CONTRACT.md），不分 bed_id，僅用於顯示標籤
 
 import { useEffect, useRef, useState } from "react";
+import { connectCameraViewSocket } from "../services/ws";
 import "./VideoFeed.css";
 
 const STATUS_LABEL = {
-  new: "連線中",
   connecting: "連線中",
-  connected: "已連線",
+  live: "已連線",
+  waiting: "尚無攝影機畫面",
   disconnected: "連線中斷",
-  failed: "連線失敗",
-  closed: "已關閉",
 };
 
-export default function VideoFeed({ bedId, roomSocket, onSignalRef }) {
-  const videoRef = useRef(null);
-  const [status, setStatus] = useState("new");
+export default function VideoFeed({ bedId }) {
+  const imgRef = useRef(null);
+  const objectUrlRef = useRef(null);
+  const [status, setStatus] = useState("connecting");
 
   useEffect(() => {
-    if (!roomSocket) return;
-
-    const pc = new RTCPeerConnection();
-    pc.addTransceiver("video", { direction: "recvonly" });
-
-    pc.ontrack = (event) => {
-      if (videoRef.current) videoRef.current.srcObject = event.streams[0];
-    };
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        roomSocket.send({ type: "webrtc_ice", bed_id: bedId, candidate: event.candidate });
-      }
-    };
-    pc.onconnectionstatechange = () => setStatus(pc.connectionState);
-
-    onSignalRef.current = async (signal) => {
-      if (signal.type === "webrtc_answer") {
-        await pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
-      } else if (signal.type === "webrtc_ice" && signal.candidate) {
-        await pc.addIceCandidate(signal.candidate);
-      }
-    };
-
-    pc.createOffer()
-      .then((offer) => pc.setLocalDescription(offer))
-      .then(() => {
-        roomSocket.send({ type: "webrtc_offer", bed_id: bedId, sdp: pc.localDescription.sdp });
-      });
+    const socket = connectCameraViewSocket(
+      (blob) => {
+        const url = URL.createObjectURL(blob);
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = url;
+        if (imgRef.current) imgRef.current.src = url;
+        setStatus("live");
+      },
+      (serverStatus) => {
+        if (serverStatus === "waiting") setStatus("waiting");
+      },
+      () => setStatus("disconnected"),
+    );
 
     return () => {
-      onSignalRef.current = null;
-      pc.close();
+      socket.close();
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
-  }, [roomSocket, bedId, onSignalRef]);
+  }, [bedId]);
 
   return (
     <div className="video-feed">
-      <video ref={videoRef} className="video-feed__video" autoPlay muted playsInline />
+      <img ref={imgRef} className="video-feed__video" alt={`${bedId} 床攝影機畫面`} />
       <span className="video-feed__status">{STATUS_LABEL[status] ?? status}</span>
     </div>
   );

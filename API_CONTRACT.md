@@ -22,8 +22,12 @@ Board 攝影機/姿勢推論     │                           │
                          │ POST /api/events/{event_id}/resolve   │◀── RoomDetail 頁（護理站標記已處理）
                          └──────────────────────────────────────┘
 
-WebRTC 影像：Board ⇄ 瀏覽器 直接 P2P（同區網，不架 STUN/TURN），
-Backend 只在 /ws/room/{bed_id} 上轉發 SDP/ICE signaling，不經手影像本身。
+影像：Board 攝影機 → /ws/camera/publish 把 JPEG frame 送進 backend（單一 publisher，記憶體內只留最新一張）
+      → RoomDetail 頁用 /ws/camera/view 用「要一張、給一張」的方式輪詢最新畫面。
+      影像本身有經過 backend 轉送（跟下面 WebRTC signaling 的 P2P 假設不同，見「攝影機串流」一節）。
+
+（原本規劃的 WebRTC P2P + /ws/room/{bed_id} signaling relay 仍保留在 schema 裡，
+ 但 Board 端尚未實作 WebRTC，目前實際在用的是上面的 JPEG relay 方案。）
 ```
 
 ## 端點
@@ -35,6 +39,9 @@ Backend 只在 /ws/room/{bed_id} 上轉發 SDP/ICE signaling，不經手影像�
 | WS | `/ws/room/{bed_id}` | 單床 vitals + active_events + WebRTC signaling（詳細頁用，進頁才連線） |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
 | POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理 |
+| GET | `/camera` | 攝影機串流測試頁（`camera.html`），瀏覽器直接開來測 publish 端，不是正式前端會用到的頁面 |
+| WS | `/ws/camera/publish` | Board（攝影機端）推送 JPEG frame 進 backend |
+| WS | `/ws/camera/view` | RoomDetail 頁輪詢目前最新一張攝影機畫面 |
 
 ## Schema
 
@@ -172,6 +179,26 @@ Backend 只在 /ws/room/{bed_id} 上轉發 SDP/ICE signaling，不經手影像�
 
 - 影像本身不經過這個 JSON 通道，只有 SDP/ICE 交換走這裡；交換完成後 media 是 board 與瀏覽器 P2P 直連
 - 影像是原始攝影機畫面，骨架線條目前**不**烤進畫面（前端不需要、也不會拿到 keypoints）
+- **目前狀態**：`/ws/room/{bed_id}` 收到這三種 signaling 訊息後只是原地丟掉（TODO，還沒轉發給另一方），Board 端也還沒實作 WebRTC。實際在跑的影像方案是下面的「攝影機串流」
+
+### 攝影機串流（`/camera`、`/ws/camera/publish`、`/ws/camera/view`）
+
+跟上面 WebRTC 的 P2P 假設不同，這套是單一鏡頭的 JPEG frame relay，影像有經過 backend（`backend/app/camera_stream.py`），只支援單一 uvicorn worker（狀態存在記憶體裡，不能多 worker 部署）。
+
+**`WS /ws/camera/publish`**（Board / 攝影機端連線）
+- 連上後 server 先送文字 `"ready"`
+- 之後每張畫面送一個 binary frame：必須是合法 JPEG（開頭 `\xFF\xD8`、結尾 `\xFF\xD9`），大小上限 2 MiB
+- server 收到每張都回文字 `"ok"` 當 ack；publisher 應該等到 `"ok"` 才送下一張（避免積壓）
+- 同時間只能有一個 publisher，第二個連線進來會直接被拒絕（close code `1008`）
+- publisher 斷線時，backend 會清空目前存的 frame（避免 viewer 端看到過期畫面卻不知道來源已經斷了）
+
+**`WS /ws/camera/view`**（RoomDetail 頁連線）
+- 是 pull 模式：viewer 每次想要下一張畫面，就送文字 `"next"`
+- server 收到 `"next"` 後回應二選一：
+  - 有新畫面：直接回傳 binary frame（JPEG bytes）
+  - 沒有新畫面：回傳 JSON `{"status": "waiting"}`（目前沒有 publisher，或超過 3 秒沒更新 → 視為 stale）或 `{"status": "unchanged"}`（有 publisher 但畫面跟上次要到的一樣）
+- 送的不是 `"next"` 的其他文字會被視為協定錯誤，直接關閉連線（`1008`）
+- 前端要自己維護一個迴圈：收到一張（或 waiting/unchanged）後，馬上送下一個 `"next"`
 
 ## 事件生命週期
 
@@ -183,8 +210,11 @@ Backend 只在 /ws/room/{bed_id} 上轉發 SDP/ICE signaling，不經手影像�
 ## 前端消費方式
 
 - **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名。
-- **RoomDetail 頁**：進頁才建立 `/ws/room/{bed_id}` 連線，同時用收到的 offer/ice 建立 WebRTC PeerConnection 顯示影像；`active_events` 列表旁可以放「標記已處理」按鈕 → 呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷）。
+- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線拿 vitals/events；影像另外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」）；`active_events` 列表旁可以放「標記已處理」按鈕 → 呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷）。
 
 ## 目前狀態
 
-`backend/app/schemas.py`、`main.py`、`frontend/src/services/ws.js` 已依此契約補上函式/型別骨架（皆為 TODO body，尚未接上真實邏輯）。`Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接。
+- `backend/app/main.py`：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（vitals+events 推播）、`/api/beds/{bed_id}/events`、`/api/events/{event_id}/resolve` 已實作；`/ws/room/{bed_id}` 裡的 WebRTC signaling relay 還是 TODO（收到即丟棄，不影響 vitals/events 推播）
+- `backend/app/camera_stream.py`：`/camera`、`/ws/camera/publish`、`/ws/camera/view` 已實作，是目前實際在用的影像方案（取代原本規劃的 WebRTC P2P）
+- `frontend/src/components/VideoFeed.jsx`：待改成接 `/ws/camera/view`（目前仍是舊版 WebRTC 實作，對不上後端現況）
+- `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接
