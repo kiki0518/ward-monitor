@@ -12,23 +12,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .camera_stream import CameraStream, router as camera_router
-
 from app import simulator, store
+from app.camera_stream import CameraStream, router as camera_router
 from app.schemas import BedInfo, RoomDetailUpdate, WardAgentOutput
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Camera state and ward data must belong to the same exported FastAPI app.
     app.state.camera = CameraStream()
     store.seed_demo_data()
     background_tasks = [
         asyncio.create_task(simulator.run_vitals_jitter()),
         asyncio.create_task(simulator.run_event_script()),
     ]
-    yield
-    for task in background_tasks:
-        task.cancel()
+    try:
+        yield
+    finally:
+        for task in background_tasks:
+            task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
 
 
 app = FastAPI(lifespan=lifespan)
@@ -110,3 +113,4 @@ async def ws_room(websocket: WebSocket, bed_id: str):
         pass
     finally:
         push_task.cancel()
+        await asyncio.gather(push_task, return_exceptions=True)

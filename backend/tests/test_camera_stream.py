@@ -12,7 +12,7 @@ LATEST = b'\xff\xd8latest\xff\xd9'
 class CameraTests(unittest.TestCase):
     def test_relay_latest_frame_and_multiple_viewers(self):
         with TestClient(app) as client:
-            assert client.get('/camera').status_code == 200
+            assert client.get('/camera').status_code == 404
             with client.websocket_connect('/ws/camera/publish') as publisher:
                 assert publisher.receive_text() == 'ready'
                 with client.websocket_connect('/ws/camera/view') as fast, client.websocket_connect('/ws/camera/view') as slow:

@@ -1,13 +1,9 @@
 // 跟 B3 對接：WebSocket / REST 連線邏輯
 // 資料格式規範請參考根目錄 API_CONTRACT.md（前後端契約，F1/F2 都要跟這份對齊）
 
-// 本機後端：負責 beds/overview/room/events 全部邏輯
+// 同一個後端負責 beds/overview/room/events 與 camera 串流
 const API_BASE = "http://127.0.0.1:8000";
 const WS_BASE = "ws://127.0.0.1:8000";
-
-// Board：只負責攝影機畫面（/ws/camera/view），跟本機後端是不同機器
-// need to modify to the correct camera ip
-const CAMERA_WS_BASE = "ws://10.28.50.69:8000";
 
 // GET /api/beds -> list[BedInfo]，進總覽頁前先拉一次床位/病患靜態名冊
 export async function fetchBeds() {
@@ -77,7 +73,7 @@ export function connectRoomSocket(bedId, onState, onSignal, onError) {
 // server 回 binary frame（JPEG bytes）或 JSON { status: "waiting" | "unchanged" }
 // 全系統目前只有一支攝影機（見 API_CONTRACT.md「攝影機串流」），不分 bed_id
 export function connectCameraViewSocket(onFrame, onStatus, onError) {
-  const socket = new WebSocket(`${CAMERA_WS_BASE}/ws/camera/view`);
+  const socket = new WebSocket(`${WS_BASE}/ws/camera/view`);
   socket.binaryType = "blob";
 
   socket.onopen = () => socket.send("next");

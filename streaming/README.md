@@ -12,7 +12,7 @@ C270 → GStreamer V4L2（image/jpeg）→ WebSocket 二進位 JPEG → FastAPI 
   和 appsink，各最多保留一張待取影像（另有正在處理／傳輸的影像）。
 - 推論執行緒只解碼自己的 JPEG，不更動送往 server 的原始 JPEG；網路重連不會等待推論。
 - Server 只存最新一張，每個觀看者顯示完才要求下一張，慢的觀看者不阻塞發布者。
-- 瀏覽器解碼後再請求，釋放每張 Blob URL；斷線會自動重連，3 秒沒新圖會隱藏舊畫面。
+- 觀看 client 應解碼後再請求、釋放 Blob URL，並自行處理斷線重連與過期畫面。
 - 網路仍有一張在途影像，不能撤回已進入 TCP 的 bytes；網路慢時會降低有效 FPS。
 - 預設 640×480、15 FPS。若每張 50 KB，約 6 Mbps（未含協定開銷）。
 
@@ -27,11 +27,13 @@ python3 -m venv .venv
   --workers 1 --ws-max-size 2097152 --ws-max-queue 1 --ws-per-message-deflate false
 ```
 
-只開 TCP 8000。此實驗使用記憶體內的單一 camera 狀態，**只能一個 worker**；
+只開 TCP 8000。此 server 同時提供既有病房 REST / WebSocket 與 camera 串流，
+共用 `app.main:app`，不需額外啟動第二個 backend。此實驗使用記憶體內的單一 camera 狀態，**只能一個 worker**；
 多 worker 必須先加入跨程序影像共享。此區網實驗沒有帳密，勿直接暴露到網際網路。
 
-觀看網址：`http://SERVER_IP:8000/camera`。電腦本機可用 `http://localhost:8000/camera`。
-不用啟動 React、Docker 或 MediaMTX，原本 `:8889/camera` 已停用。
+觀看 API：`ws://SERVER_IP:8000/ws/camera/view`。
+Backend 只提供 API，不再提供 `/camera` HTML 頁；前端需自行接收 JPEG 並顯示。
+不需 Docker 或 MediaMTX。
 若之前自行啟動 MediaMTX 容器，請先用原 Compose 設定停止它；本版已移除舊設定。
 
 ## 板子：確認 MJPEG 與依賴
@@ -115,7 +117,7 @@ C270 /dev/video2 → image/jpeg → tee
 
 可用 `--model /path/model.tflite --delegate /path/libethosu_delegate.so` 覆寫。
 `--pose-print-interval 1` 控制終端輸出間隔（秒），不限制推論取樣速率。
-啟動後應看到模型資訊、`MoveNet branch started`，以及 `Connected. Watch ...`。
+啟動後應看到模型資訊、`MoveNet branch started`，以及 `Connected. Viewer API: ...`。
 即使 server 尚未啟動，也會先在板子終端看到推論輸出。
 
 保留提供程式的 17 點座標、信心閾值 0.20、身體中心正規化、站／坐／躺／舉手判斷，
@@ -123,7 +125,7 @@ C270 /dev/video2 → image/jpeg → tee
 輸入處理和輸出反量化。`movenet_pose.py` 負責這些邏輯，不再呼叫 `cv2.VideoCapture`。
 推論縮放方式沿用原程式，未另外引入 letterbox 或調整分類閾值。
 
-姿勢結果仍印在板子終端，server `/camera` 顯示未疊圖影像；本次未新增姿勢 JSON 上傳或骨架疊圖。
+姿勢結果仍印在板子終端，server 透過 `/ws/camera/view` 提供未疊圖影像；本次未新增姿勢 JSON 上傳或骨架疊圖。
 兩路各自丟掉舊圖，因此不保證每張傳輸影像都有同一張的推論結果。
 之後若要在網頁疊骨架，需再加入 frame ID / timestamp 同步協定。
 
@@ -134,7 +136,7 @@ C270 /dev/video2 → image/jpeg → tee
 
 ### 整合驗收
 
-1. 終端持續出現 Raw / Stable / Base pose、舉手狀態與關鍵點；網頁同時顯示原始画面。
+1. 終端持續出現 Raw / Stable / Base pose、舉手狀態與關鍵點；觀看 client 同時收到原始 JPEG。
 2. 停止 server：板子應持續推論並重試串流；重新啟動 server 後恢復監看。
 3. 確认沒有第二個 VideoCapture 程式占用鏡頭，畫面延遲不隨時間累積。
 4. Ctrl+C 停止後，再次啟動可重新取得 camera。
@@ -157,18 +159,18 @@ python3 -m unittest discover -s streaming/tests -v
 
 範例 server：`192.168.1.100:8000`。所有服務共用 TCP 8000。
 預設使用 HTTP / WS，沒有登入、token、WebSocket subprotocol 或房間識別參數。
-若另行部署 TLS reverse proxy，觀看頁會依 HTTPS 自動使用 WSS；目前板子 CLI 固定使用 WS。
+若另行部署 TLS reverse proxy，觀看 client 應使用 WSS；目前板子 CLI 固定使用 WS。
 
 | 協定 | 路徑 | 呼叫端 | 用途 |
 | --- | --- | --- | --- |
 | HTTP GET | `/` | 任意 HTTP client | 健康檢查 |
-| HTTP GET | `/camera` | 瀏覽器 | 監看 HTML 頁面 |
 | WebSocket | `/ws/camera/publish` | 開發板 | 發布原始 JPEG |
 | WebSocket | `/ws/camera/view` | 瀏覽器／觀看 client | 依請求取得最新 JPEG |
 
-`/ws` 是原本病房狀態的占位端點，目前接受連線後即關閉，不能用來傳影像。
-WebSocket 協定不列入 FastAPI OpenAPI；`/camera` 也設定了 `include_in_schema=False`，
-因此 `/docs` 不是這份串流協定的完整清單。
+現有病房狀態端點為 `/ws/overview` 與 `/ws/room/{bed_id}`，與 camera 路由共用 server；
+它們傳送病房 JSON，不接收 JPEG。`/ws` 已不存在，不能用來傳影像。
+WebSocket 協定不列入 FastAPI OpenAPI，因此 `/docs` 不是這份串流協定的完整清單。
+`GET /camera` 已移除，回傳 HTTP 404。
 
 ### HTTP GET `/`
 
@@ -179,13 +181,6 @@ WebSocket 協定不列入 FastAPI OpenAPI；`/camera` 也設定了 `include_in_s
 ```
 
 只代表 FastAPI 可回應，不代表 camera 已連上或影像仍在更新。
-
-### HTTP GET `/camera`
-
-無 request body。成功回應為 HTTP 200、HTML 文件，帶 `Cache-Control: no-store`。
-頁面透過同主機的 `/ws/camera/view` 取圖，顯示影像尺寸、實際接收 FPS、最近一張大小與狀態。
-這不是直接輸出影片的 HTTP endpoint，也不是 `multipart/x-mixed-replace` MJPEG response；
-不可把這個網址當成 JPEG 或直接放入 `<video src>`。
 
 ### 共用影像格式
 
@@ -294,7 +289,7 @@ view 端的 binary request 不在協定內；目前 handler 使用 `receive_text
 未替這種誤用定義穩定的 close code。請始終送文字 `next`。
 正常收到 `waiting` 或 `unchanged` 不需要重新連線，繼續送下一個 `next` 即可。
 
-### 逾時與現有 client 重連行為
+### 逾時與 client 重連行為
 
 | 所在端 | 行為 | 期限／間隔 |
 | --- | --- | --- |
@@ -306,12 +301,11 @@ view 端的 binary request 不在協定內；目前 handler 使用 `receive_text
 | Server | 影像新鮮度 | 接收後小於 3 秒 |
 | 板子 client | 建立連線、等 `ready`、等 `ok` | 各 5 秒 |
 | 板子 client | 可恢復的連線錯誤／斷線後重試 | 每次失敗後等 2 秒 |
-| 內建監看頁 | WebSocket 關閉後重連 | 2 秒 |
 
 板子收到 `1003`、`1008`、`1009` 視為拒絕發布並退出，修正原因後重啟。
-內建頁面解碼完成才要求下一張，並釋放 Blob URL；約每秒檢查是否超過 3 秒沒有成功顯示新圖，
-過期時隱藏舊畫面，避免將凍結影像誤認為即時影像。
-上述重試是現有 client 的行為，不是 server 自動重建 client 連線。
+觀看 client 應在解碼完成後才要求下一張，釋放 Blob URL；收到 `waiting` 或斷線時隱藏舊畫面。
+前端需自行實作重連與無影像逾時，backend 不提供內建監看頁。
+上述板子重試是發布 client 的行為，不是 server 自動重建 client 連線。
 
 ### 最小 client 範例
 
@@ -330,14 +324,14 @@ with connect("ws://192.168.1.100:8000/ws/camera/publish", compression=None) as w
 此範例只測上傳；離開 `with` 會立刻斷線並清除 server 的影像。
 持續監看請使用上方 `publish_camera.py` 或 `movenet_test.py` 指令。
 
-瀏覽器最小取圖範例（放在 server 同來源的網頁；完整重連與狀態處理見 `backend/app/camera.html`）：
+瀏覽器最小取圖範例（由你的前端提供頁面；範例未包含自動重連及無影像逾時）：
 
 ```html
 <img id="camera-preview" alt="Camera" hidden>
 <script>
 const image = document.querySelector('#camera-preview');
-const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${protocol}//${location.host}/ws/camera/view`);
+// 換成實際 backend 地址；HTTPS 前端需使用可連線的 wss:// backend。
+const ws = new WebSocket('ws://192.168.1.100:8000/ws/camera/view');
 ws.binaryType = 'blob';
 const next = () => {
   if (ws.readyState === WebSocket.OPEN) ws.send('next');
@@ -376,10 +370,10 @@ MoveNet 推論結果仍只在板子終端輸出。若要同步骨架與畫面，
 
 ## 驗收與排錯
 
-1. 先啟動 server，開頁面應看到「等待攝影機」。
-2. 發布測試動畫或 camera，應看到即時影像與 FPS。
-3. 開兩個觀看頁，確認互不阻塞。刻意放慢其中一個觀看者，恢復後應跳到最新影像。
-4. 停止發布，頁面應隱藏舊影像；重新啟動後自動恢復。
+1. 先啟動 server，觀看 client 連 `/ws/camera/view` 並送 `next`，應收到 `waiting`。
+2. 發布測試動畫或 camera，觀看 client 應收到可解碼的 JPEG。
+3. 開兩個觀看 client，確認互不阻塞。刻意放慢其中一個觀看者，恢復後應跳到最新影像。
+4. 停止發布，觀看 client 下一個 `next` 應收到 `waiting`；重新發布後應取得新 JPEG。
 5. 連續觀看 5 分鐘，用鏡頭前的時鐘估計延遲，記錄 Wi-Fi 頻寬與有效 FPS。
 
 - `No module named gi`：檢查 OS PyGObject 與 venv 的 system-site-packages。
