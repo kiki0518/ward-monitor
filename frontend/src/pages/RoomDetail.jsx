@@ -4,11 +4,15 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
+import { useDismissedEvents } from "../context/DismissedEventsContext";
+import { GENDER_LABEL } from "../constants/labels";
 import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
-import "./RoomDetail.css";
+import EventHistory from "../components/EventHistory";
+import ExportButton from "../components/ExportButton";
 
 const VITALS_HISTORY_LIMIT = 30;
 
@@ -20,16 +24,18 @@ export default function RoomDetail() {
 
 function RoomDetailView({ bedId }) {
   const navigate = useNavigate();
-  const [patientName, setPatientName] = useState(null);
+  const [patient, setPatient] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
+  const { dismissedIds, dismissEvent } = useDismissedEvents();
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     fetchBeds()
       .then((beds) => {
         if (cancelled) return;
-        setPatientName(beds.find((bed) => bed.bed_id === bedId)?.patient_name ?? null);
+        setPatient(beds.find((bed) => bed.bed_id === bedId) ?? null);
       })
       .catch(() => {});
     return () => {
@@ -52,26 +58,54 @@ function RoomDetailView({ bedId }) {
 
   function handleResolved(eventId) {
     setActiveEvents((prev) => prev.filter((event) => event.event_id !== eventId));
+    setHistoryRefresh((prev) => prev + 1);
   }
 
+  function handleDismissed(eventId) {
+    dismissEvent(eventId);
+  }
+
+  const visibleEvents = activeEvents.filter((event) => !dismissedIds.has(event.event_id));
+
   return (
-    <div className="room-detail">
-      <button type="button" className="room-detail__back" onClick={() => navigate(-1)}>
-        ← 返回
-      </button>
-      <h1>
-        {bedId} 床{patientName ? ` · ${patientName}` : ""}
+    <div className="min-h-screen bg-slate-50 p-8">
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft size={16} />
+          返回
+        </button>
+        <ExportButton />
+      </div>
+      <h1 className="text-2xl font-bold text-slate-900 mb-1">
+        {bedId} 床{patient ? ` · ${patient.patient_name}` : ""}
       </h1>
-      <div className="room-detail__layout">
-        <VideoFeed bedId={bedId} />
-        <div className="room-detail__side">
-          <section>
-            <h2>生理數據</h2>
-            <VitalsPanel history={vitalsHistory} />
+      {patient && (
+        <p className="text-sm text-slate-500 mb-6">
+          {GENDER_LABEL[patient.gender] ?? patient.gender}・{patient.age} 歲・{patient.diagnosis}
+        </p>
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
+        <div className="flex flex-col gap-6">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <VideoFeed bedId={bedId} />
+          </div>
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">處理紀錄</h2>
+            <EventHistory bedId={bedId} refreshKey={historyRefresh} />
           </section>
-          <section>
-            <h2>待處理事件</h2>
-            <EventsList events={activeEvents} onResolved={handleResolved} />
+        </div>
+        <div className="flex flex-col gap-6">
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">待處理事件</h2>
+            <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
+          </section>
+          <section className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">生理數據</h2>
+            <VitalsPanel history={vitalsHistory} />
           </section>
         </div>
       </div>

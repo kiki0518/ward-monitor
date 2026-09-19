@@ -3,6 +3,12 @@
   text-align: left;
 }
 
+.overview__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .overview__status {
   color: var(--text);
   padding: 24px 0;

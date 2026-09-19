@@ -3,11 +3,17 @@
   text-align: left;
 }
 
+.room-detail__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .room-detail__back {
   background: none;
   border: none;
   padding: 0;
-  margin-bottom: 12px;
   color: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -15,6 +21,12 @@
 
 .room-detail__back:hover {
   text-decoration: underline;
+}
+
+.room-detail__patient-meta {
+  color: var(--text);
+  margin-top: -16px;
+  margin-bottom: 16px;
 }
 
 .room-detail__status {
@@ -33,6 +45,10 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.room-detail__history {
+  margin-top: 24px;
 }
 
 @media (max-width: 800px) {

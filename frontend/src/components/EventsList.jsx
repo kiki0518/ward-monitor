@@ -1,63 +1,95 @@
 // F2 負責
-// 待處理事件列表：依 priority/發生時間排序，每筆可標記已處理
+// 待處理事件列表：依 priority/發生時間排序，每筆可標記已處理，或標記為誤觸
+// 「誤觸」純粹是前端把這筆從畫面濾掉，不呼叫任何 API、不進處理紀錄（見 API_CONTRACT.md「誤觸」一節）
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { resolveEvent } from "../services/ws";
-import { EVENT_STATE_LABEL, LOCATION_LABEL, PRIORITY_LABEL } from "../constants/labels";
-import "./EventsList.css";
+import { EVENT_STATE_LABEL, PRIORITY_LABEL } from "../constants/labels";
+import { formatRelativeTime } from "../utils/relativeTime";
+import ResolveModal from "./ResolveModal";
 
 const PRIORITY_ORDER = { red: 0, yellow: 1, green: 2 };
 
-export default function EventsList({ events, onResolved }) {
-  const [resolvingIds, setResolvingIds] = useState(() => new Set());
+const CARD_STYLE = {
+  red: "border-l-red-500",
+  yellow: "border-l-amber-500",
+  green: "border-l-emerald-500",
+};
 
-  const sorted = [...events].sort((a, b) => {
-    const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-    if (priorityDiff !== 0) return priorityDiff;
-    return new Date(b.started_at) - new Date(a.started_at);
-  });
+const BADGE_STYLE = {
+  red: "bg-red-100 text-red-700",
+  yellow: "bg-amber-100 text-amber-700",
+  green: "bg-emerald-100 text-emerald-700",
+};
 
-  async function handleResolve(eventId) {
-    setResolvingIds((prev) => new Set(prev).add(eventId));
-    try {
-      await resolveEvent(eventId);
-      onResolved(eventId);
-    } finally {
-      setResolvingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(eventId);
-        return next;
-      });
-    }
-  }
+export default function EventsList({ events, onResolved, onDismissed }) {
+  const [resolvingEventId, setResolvingEventId] = useState(null);
 
-  if (sorted.length === 0) {
-    return <p className="events-list events-list--empty">目前無待處理事件</p>;
+  // 正在填表單的那筆先從畫面濾掉（樂觀 UI，不用等 API 回應）；
+  // 取消的話 resolvingEventId 變回 null，濾掉的條件解除，卡片自動恢復顯示
+  const sorted = events
+    .filter((event) => event.event_id !== resolvingEventId)
+    .sort((a, b) => {
+      const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.started_at) - new Date(a.started_at);
+    });
+
+  async function handleConfirmResolve(report) {
+    await resolveEvent(resolvingEventId, report);
+    onResolved(resolvingEventId);
+    setResolvingEventId(null);
   }
 
   return (
-    <ul className="events-list">
-      {sorted.map((event) => (
-        <li key={event.event_id} className={`events-list__item events-list__item--${event.priority}`}>
-          <div className="events-list__header">
-            <span className="events-list__state">{EVENT_STATE_LABEL[event.state] ?? event.state}</span>
-            <span className="events-list__badge">{PRIORITY_LABEL[event.priority] ?? event.priority}</span>
-          </div>
-          <p className="events-list__reason">{event.reason}</p>
-          <p className="events-list__meta">
-            位置：{LOCATION_LABEL[event.location] ?? event.location} ·{" "}
-            {new Date(event.started_at).toLocaleTimeString("zh-TW", { hour12: false })}
-          </p>
-          {event.action && <p className="events-list__action">建議：{event.action}</p>}
-          <button
-            className="events-list__resolve"
-            disabled={resolvingIds.has(event.event_id)}
-            onClick={() => handleResolve(event.event_id)}
-          >
-            標記已處理
-          </button>
-        </li>
-      ))}
-    </ul>
+    <Fragment>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-slate-400 py-3">目前無待處理事件</p>
+      ) : (
+        <ul className="flex flex-col gap-2.5">
+          {sorted.map((event) => (
+            <li
+              key={event.event_id}
+              className={`rounded-xl border-l-4 border border-slate-100 bg-white p-3.5 shadow-sm ${
+                CARD_STYLE[event.priority] ?? "border-l-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-sm font-semibold text-slate-900">
+                  {EVENT_STATE_LABEL[event.state] ?? event.state}
+                </span>
+                <span
+                  className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
+                    BADGE_STYLE[event.priority] ?? "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {PRIORITY_LABEL[event.priority] ?? event.priority}
+                </span>
+              </div>
+              <p className="text-sm text-slate-700 mb-1">{event.reason}</p>
+              <p className="text-xs text-slate-500 mb-1">時間：{formatRelativeTime(event.started_at)}</p>
+              {event.action && <p className="text-xs text-slate-500 mb-1">建議：{event.action}</p>}
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  onClick={() => setResolvingEventId(event.event_id)}
+                >
+                  標記已處理
+                </button>
+                <button
+                  className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  onClick={() => onDismissed(event.event_id)}
+                >
+                  錯誤判斷
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {resolvingEventId && (
+        <ResolveModal onCancel={() => setResolvingEventId(null)} onConfirm={handleConfirmResolve} />
+      )}
+    </Fragment>
   );
 }
