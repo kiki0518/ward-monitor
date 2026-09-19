@@ -6,14 +6,29 @@
 #   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理（idempotent）
 
+from contextlib import asynccontextmanager
+
 import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from .camera_stream import CameraStream, router as camera_router
+
 from app import simulator, store
 from app.schemas import BedInfo, RoomDetailUpdate, WardAgentOutput
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.camera = CameraStream()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(camera_router)
+
+
 
 
 @asynccontextmanager

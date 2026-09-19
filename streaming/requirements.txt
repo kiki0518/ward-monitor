@@ -1,0 +1,2 @@
+# PyGObject and GStreamer come from the board OS, not pip.
+websockets>=14,<16
