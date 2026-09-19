@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import FloorPlan from "../components/FloorPlan";
+import AlertPanel from "../components/AlertPanel";
 import { fetchBeds, connectOverviewSocket } from "../services/ws";
 import { groupBedsByFloor } from "../config/floorLayout";
 import "./Overview.css";
@@ -76,18 +77,23 @@ export default function Overview() {
   return (
     <div className="overview">
       <h1>病房總覽</h1>
-      <div className="overview__tabs">
-        {floorKeys.map((floor) => (
-          <button
-            key={floor}
-            className={`overview__tab ${floor === activeFloor ? "overview__tab--active" : ""}`}
-            onClick={() => setSelectedFloor(floor)}
-          >
-            {floor} 樓
-          </button>
-        ))}
+      <div className="overview__body">
+        <div className="overview__main">
+          <div className="overview__tabs">
+            {floorKeys.map((floor) => (
+              <button
+                key={floor}
+                className={`overview__tab ${floor === activeFloor ? "overview__tab--active" : ""}`}
+                onClick={() => setSelectedFloor(floor)}
+              >
+                {floor} 樓
+              </button>
+            ))}
+          </div>
+          <FloorPlan beds={floors.get(activeFloor) ?? []} />
+        </div>
+        <AlertPanel beds={beds} activeFloor={activeFloor} />
       </div>
-      <FloorPlan beds={floors.get(activeFloor) ?? []} />
     </div>
   );
 }
