@@ -1,6 +1,6 @@
 // F1 負責
-// 單一樓層的平面圖：SVG 背景（牆、病房、走廊、護理站）+ 疊加的互動床位標記，
-// 標記依 priority 上色，預設只顯示房號，hover 才展開完整資訊
+// 單一樓層的平面圖：SVG 背景（病房、走廊、護理站）+ 疊加的互動床位標記，
+// 標記依 priority 上色，預設只顯示房內床號，hover 才展開完整資訊
 
 import FloorPlanBackground from "./FloorPlanBackground";
 import BedMarker from "./BedMarker";
@@ -11,21 +11,20 @@ import {
   getBedSlotCenterPercent,
   getRoomLabels,
 } from "../config/floorLayout";
-import "./FloorPlan.css";
 
-export default function FloorPlan({ beds }) {
+export default function FloorPlan({ beds, highlightedBedId, onHighlightBed }) {
   const roomLabels = getRoomLabels();
 
   return (
     <div
-      className="floor-plan"
+      className="relative w-full"
       style={{ aspectRatio: `${FLOOR_PLAN_VIEWBOX.width} / ${FLOOR_PLAN_VIEWBOX.height}` }}
     >
       <FloorPlanBackground />
       {roomLabels.map(({ key, label, left, top }) => (
         <span
           key={key}
-          className="floor-plan__room-label"
+          className="absolute -translate-x-1/2 -translate-y-1/2 text-[11px] text-slate-400 pointer-events-none"
           style={{ left: `${left}%`, top: `${top}%` }}
         >
           {label}
@@ -43,6 +42,8 @@ export default function FloorPlan({ beds }) {
             left={left}
             top={top}
             expandDirection={slot.room.doorSide === "bottom" ? "down" : "up"}
+            highlighted={highlightedBedId === bed.bed_id}
+            onHighlight={onHighlightBed}
           />
         );
       })}

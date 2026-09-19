@@ -3,13 +3,19 @@
 // history 由 RoomDetail 在收到每筆 WS state 訊息時累積傳入（最近 N 筆 Vitals）
 
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import "./VitalsPanel.css";
+
+const STAT_STYLE = {
+  heart_rate: { label: "心跳", unit: "bpm", bg: "bg-red-50", text: "text-red-600" },
+  spo2: { label: "血氧", unit: "%", bg: "bg-sky-50", text: "text-sky-600" },
+  bp: { label: "血壓", unit: "mmHg", bg: "bg-indigo-50", text: "text-indigo-600" },
+  temperature: { label: "體溫", unit: "°C", bg: "bg-amber-50", text: "text-amber-600" },
+};
 
 export default function VitalsPanel({ history }) {
   const latest = history[history.length - 1];
 
   if (!latest) {
-    return <div className="vitals-panel vitals-panel--loading">等待生理數據...</div>;
+    return <div className="text-sm text-slate-400 py-6">等待生理數據...</div>;
   }
 
   const chartData = history.map((v) => ({
@@ -19,7 +25,7 @@ export default function VitalsPanel({ history }) {
   }));
 
   return (
-    <div className="vitals-panel">
+    <div>
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
           <XAxis dataKey="time" tick={{ fontSize: 11 }} minTickGap={24} />
@@ -27,36 +33,32 @@ export default function VitalsPanel({ history }) {
           <YAxis yAxisId="spo2" domain={[85, 100]} hide />
           <Tooltip />
           <Legend verticalAlign="top" height={24} wrapperStyle={{ top: -10 }} />
-          <Line yAxisId="hr" type="monotone" dataKey="heart_rate" name="心跳 (bpm)" stroke="#c62828" dot={false} isAnimationActive={false} />
-          <Line yAxisId="spo2" type="monotone" dataKey="spo2" name="血氧 (%)" stroke="#1565c0" dot={false} isAnimationActive={false} />
+          <Line yAxisId="hr" type="monotone" dataKey="heart_rate" name="心跳 (bpm)" stroke="#ef4444" dot={false} isAnimationActive={false} />
+          <Line yAxisId="spo2" type="monotone" dataKey="spo2" name="血氧 (%)" stroke="#0ea5e9" dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
-      <div className="vitals-panel__cards">
-        <div className="vitals-card">
-          <span className="vitals-card__label">心跳</span>
-          <span className="vitals-card__value" style={{ color: "#c62828" }}>
-            {latest.heart_rate}
-          </span>
-          <span className="vitals-card__unit">bpm</span>
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        <div className={`flex flex-col items-start p-4 rounded-xl ${STAT_STYLE.heart_rate.bg}`}>
+          <span className="text-xs text-slate-500">{STAT_STYLE.heart_rate.label}</span>
+          <span className={`text-2xl font-semibold ${STAT_STYLE.heart_rate.text}`}>{latest.heart_rate}</span>
+          <span className="text-[11px] text-slate-400">{STAT_STYLE.heart_rate.unit}</span>
         </div>
-        <div className="vitals-card">
-          <span className="vitals-card__label">血氧</span>
-          <span className="vitals-card__value" style={{ color: "#1565c0" }}>
-            {latest.spo2}
-          </span>
-          <span className="vitals-card__unit">%</span>
+        <div className={`flex flex-col items-start p-4 rounded-xl ${STAT_STYLE.spo2.bg}`}>
+          <span className="text-xs text-slate-500">{STAT_STYLE.spo2.label}</span>
+          <span className={`text-2xl font-semibold ${STAT_STYLE.spo2.text}`}>{latest.spo2}</span>
+          <span className="text-[11px] text-slate-400">{STAT_STYLE.spo2.unit}</span>
         </div>
-        <div className="vitals-card">
-          <span className="vitals-card__label">血壓</span>
-          <span className="vitals-card__value">
+        <div className={`flex flex-col items-start p-4 rounded-xl ${STAT_STYLE.bp.bg}`}>
+          <span className="text-xs text-slate-500">{STAT_STYLE.bp.label}</span>
+          <span className={`text-2xl font-semibold ${STAT_STYLE.bp.text}`}>
             {latest.bp_systolic}/{latest.bp_diastolic}
           </span>
-          <span className="vitals-card__unit">mmHg</span>
+          <span className="text-[11px] text-slate-400">{STAT_STYLE.bp.unit}</span>
         </div>
-        <div className="vitals-card">
-          <span className="vitals-card__label">體溫</span>
-          <span className="vitals-card__value">{latest.temperature}</span>
-          <span className="vitals-card__unit">°C</span>
+        <div className={`flex flex-col items-start p-4 rounded-xl ${STAT_STYLE.temperature.bg}`}>
+          <span className="text-xs text-slate-500">{STAT_STYLE.temperature.label}</span>
+          <span className={`text-2xl font-semibold ${STAT_STYLE.temperature.text}`}>{latest.temperature}</span>
+          <span className="text-[11px] text-slate-400">{STAT_STYLE.temperature.unit}</span>
         </div>
       </div>
     </div>

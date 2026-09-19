@@ -4,9 +4,21 @@
 import { useState } from "react";
 import { resolveEvent } from "../services/ws";
 import { EVENT_STATE_LABEL, LOCATION_LABEL, PRIORITY_LABEL } from "../constants/labels";
-import "./EventsList.css";
+import { formatRelativeTime } from "../utils/relativeTime";
 
 const PRIORITY_ORDER = { red: 0, yellow: 1, green: 2 };
+
+const CARD_STYLE = {
+  red: "border-l-red-500",
+  yellow: "border-l-amber-500",
+  green: "border-l-emerald-500",
+};
+
+const BADGE_STYLE = {
+  red: "bg-red-100 text-red-700",
+  yellow: "bg-amber-100 text-amber-700",
+  green: "bg-emerald-100 text-emerald-700",
+};
 
 export default function EventsList({ events, onResolved }) {
   const [resolvingIds, setResolvingIds] = useState(() => new Set());
@@ -32,25 +44,36 @@ export default function EventsList({ events, onResolved }) {
   }
 
   if (sorted.length === 0) {
-    return <p className="events-list events-list--empty">目前無待處理事件</p>;
+    return <p className="text-sm text-slate-400 py-3">目前無待處理事件</p>;
   }
 
   return (
-    <ul className="events-list">
+    <ul className="flex flex-col gap-2.5">
       {sorted.map((event) => (
-        <li key={event.event_id} className={`events-list__item events-list__item--${event.priority}`}>
-          <div className="events-list__header">
-            <span className="events-list__state">{EVENT_STATE_LABEL[event.state] ?? event.state}</span>
-            <span className="events-list__badge">{PRIORITY_LABEL[event.priority] ?? event.priority}</span>
+        <li
+          key={event.event_id}
+          className={`rounded-xl border-l-4 border border-slate-100 bg-white p-3.5 shadow-sm ${
+            CARD_STYLE[event.priority] ?? "border-l-slate-300"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-sm font-semibold text-slate-900">
+              {EVENT_STATE_LABEL[event.state] ?? event.state}
+            </span>
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
+                BADGE_STYLE[event.priority] ?? "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {PRIORITY_LABEL[event.priority] ?? event.priority}
+            </span>
           </div>
-          <p className="events-list__reason">{event.reason}</p>
-          <p className="events-list__meta">
-            位置：{LOCATION_LABEL[event.location] ?? event.location} ·{" "}
-            {new Date(event.started_at).toLocaleTimeString("zh-TW", { hour12: false })}
+          <p className="text-sm text-slate-700 mb-1">{event.reason}</p>
+          <p className="text-xs text-slate-500 mb-1">
+            位置：{LOCATION_LABEL[event.location] ?? event.location} · {formatRelativeTime(event.started_at)}
           </p>
-          {event.action && <p className="events-list__action">建議：{event.action}</p>}
           <button
-            className="events-list__resolve"
+            className="mt-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-default transition-colors"
             disabled={resolvingIds.has(event.event_id)}
             onClick={() => handleResolve(event.event_id)}
           >
