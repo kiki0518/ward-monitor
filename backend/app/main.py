@@ -1,20 +1,17 @@
 # B3 負責：FastAPI server + WebSocket，是前端唯一要對接的入口
-# 之後要接：
-#   - 訂閱 B1 的 pose 資料 (直接呼叫 / MQTT，先簡單做直接呼叫)
-#   - 訂閱 B2 的行為判斷/決策結果
-#   - vitals_simulator 產生的假生理數據
-#   - 統一格式後透過 /ws 推送給前端
+# 對應 API_CONTRACT.md：
+#   GET  /api/beds                      -> 床位靜態名冊
+#   WS   /ws/overview                   -> 總覽頁，持續推送 OverviewUpdate[]
+#   WS   /ws/room/{bed_id}              -> RoomDetail 頁：state(vitals+active_events) + WebRTC signaling
+#   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket
+import asyncio
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import store
-from app.schemas import (
-    EventsResponse,
-    RoomDetailResponse,
-    RoomSummary,
-    RoomsResponse,
-)
+from app.schemas import BedInfo, RoomDetailUpdate, WardAgentOutput
 
 app = FastAPI()
 
@@ -33,48 +30,59 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.get("/api/rooms", response_model=RoomsResponse)
-def list_rooms():
-    rooms = [
-        RoomSummary(
-            bed_id=room.bed_id,
-            patient_name=room.patient_name,
-            is_live=room.is_live,
-            risk_level=store.get_risk_level(room.bed_id),
-            last_updated=room.last_updated,
-        )
-        for room in store.get_all_rooms()
-    ]
-    return RoomsResponse(rooms=rooms)
+@app.get("/api/beds", response_model=list[BedInfo])
+def list_beds():
+    return store.get_all_beds()
 
 
-@app.get("/api/rooms/{bed_id}", response_model=RoomDetailResponse)
-def get_room_detail(bed_id: str):
-    room = store.get_room(bed_id)
-    if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-    return RoomDetailResponse(
-        bed_id=room.bed_id,
-        patient_name=room.patient_name,
-        is_live=room.is_live,
-        current_posture=room.current_posture,
-        risk_level=store.get_risk_level(bed_id),
-        latest_keypoints=room.latest_keypoints,
-        latest_vitals=room.latest_vitals,
-        habit_baseline=room.habit_baseline,
-        medical_orders=room.medical_orders,
-    )
+@app.post("/api/events/{event_id}/resolve", response_model=WardAgentOutput)
+def resolve_event(event_id: str):
+    event = store.resolve_event(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
 
 
-@app.get("/api/rooms/{bed_id}/events", response_model=EventsResponse)
-def get_room_events(bed_id: str, limit: int = Query(default=50, ge=1)):
-    if not store.room_exists(bed_id):
-        raise HTTPException(status_code=404, detail="Room not found")
-    return EventsResponse(events=store.get_events(bed_id, limit))
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+@app.websocket("/ws/overview")
+async def ws_overview(websocket: WebSocket):
     await websocket.accept()
-    # TODO: 迴圈推送病房狀態 / 關鍵點 / 體徵資料給前端
-    await websocket.close()
+    try:
+        while True:
+            updates = [update.model_dump(mode="json") for update in store.get_all_overviews()]
+            await websocket.send_json(updates)
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        pass
+
+
+@app.websocket("/ws/room/{bed_id}")
+async def ws_room(websocket: WebSocket, bed_id: str):
+    if not store.bed_exists(bed_id):
+        await websocket.close(code=4004)
+        return
+
+    await websocket.accept()
+
+    async def push_state():
+        while True:
+            vitals = store.get_vitals(bed_id)
+            update = RoomDetailUpdate(
+                bed_id=bed_id,
+                ts=vitals.ts,
+                vitals=vitals,
+                active_events=store.get_active_events(bed_id),
+            )
+            await websocket.send_json(update.model_dump(mode="json"))
+            await asyncio.sleep(1.5)
+
+    push_task = asyncio.create_task(push_state())
+    try:
+        while True:
+            # TODO: WebRTC signaling relay — 收到的 webrtc_offer/webrtc_answer/webrtc_ice
+            # 要轉發給同一個 bed_id 上的另一方（board 或瀏覽器）。B1 的 WebRTC 還沒接上，
+            # 先只是收下不處理，避免連線被塞爆。
+            await websocket.receive_json()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        push_task.cancel()
