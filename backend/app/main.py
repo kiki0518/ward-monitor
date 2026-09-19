@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
     background_tasks = [
         asyncio.create_task(simulator.run_vitals_jitter()),
         asyncio.create_task(simulator.run_vitals_alerting()),
+        asyncio.create_task(simulator.run_bathroom_jitter()),
+        asyncio.create_task(simulator.run_location_alerting()),
         asyncio.create_task(simulator.run_event_script()),
     ]
     try:

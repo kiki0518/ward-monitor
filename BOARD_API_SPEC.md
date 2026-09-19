@@ -1,6 +1,6 @@
 # 板子 → Backend API Spec（姿勢 / 跌倒）
 
-這份文件是給板子端（`streaming/`）看的：板子有什麼東西，就照這份規格傳給 backend。跟前端對接的完整契約在 [`API_CONTRACT.md`](./API_CONTRACT.md)，這份只挑出「板子要送什麼」這部分。
+這份文件是給板子端（`streaming/`）看的：板子有什麼東西，就照這份規格傳給 backend。跟前端對接的完整契約在 [`API_CONTRACT.md`](./API_CONTRACT.md)。
 
 影像（JPEG 串流）**不在這份文件範圍內**——那條已經是你們自己在 `streaming/README.md` 定案的協定（`/ws/camera/publish`），backend 這邊照那份實作好了，不用再對。這份只講姿勢推論的部分：`streaming/movenet_pose.py` 算出來的東西要怎麼送到 backend。
 
@@ -8,7 +8,7 @@ Demo 目前只有 **`bed_id = "101"`** 這一床接真的板子，其他床都�
 
 ---
 
-## 兩支 API，性質不同，分開處理
+## 兩支 API
 
 | | 姿勢（持續性） | 疑似跌倒（離散事件） |
 |---|---|---|
@@ -61,7 +61,6 @@ Demo 目前只有 **`bed_id = "101"`** 這一床接真的板子，其他床都�
 | `"standing"` | `"standing"` |
 | `"sitting"` | `"sitting"` |
 | `"lying"` | `"lying"` |
-| `"raising_hand"` | `"raising_hand"` |
 | `"unknown"` | `null`（**不要**送字串 `"unknown"`） |
 
 `current_posture` 只接受這 4 個字串或 `null`，其他字串 backend 會拒絕整筆訊息。
@@ -82,7 +81,7 @@ Demo 目前只有 **`bed_id = "101"`** 這一床接真的板子，其他床都�
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
-| `ts` | string，ISO 8601 UTC | 你們判斷出疑似跌倒的時間 |
+| `ts` | string，ISO 8601 UTC |  BOARD 端判斷出疑似跌倒的時間 |
 
 不用附 `bed_id`（在網址路徑裡）。`Content-Type: application/json`。
 
@@ -126,7 +125,3 @@ def report_possible_fall(server_ip: str, bed_id: str = "101"):
 ```
 
 ---
-
-## 找 backend 的人
-
-`bed_id` 不存在時（demo 只 seed 了 `101`~`606`，見 `backend/app/data/beds.csv`）：跌倒回報那支是一般 HTTP `404`；姿勢那條 WebSocket 連線會在 handshake 階段就被拒絕（client 端看到的是連線失敗/HTTP 403，不會先連上再收到 close 訊息），連不上就先確認 `bed_id` 打對了。

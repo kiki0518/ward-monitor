@@ -132,7 +132,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 |---|---|---|
 | `event_id` | string | 事件唯一識別碼，由 ward_agent 產生，格式 `evt_<started_at 的緊湊時間戳記>_<4碼隨機 hex>`（例如 `"evt_20260919143150_a1b2"`），方便從 ID 本身看出大概發生時間 |
 | `bed_id` | string | 對應 `BedInfo.bed_id` |
-| `state` | enum | `bed_exit`（離床）/ `possible_fall`（疑似跌倒）/ `abnormal_transition`（異常姿勢轉換）/ `prolonged_sitting`（長期坐著）/ `night_wandering`（夜間遊蕩）/ `medical_order_violation`（違反醫囑限制）/ `abnormal_vitals`（生理數據異常） |
+| `state` | enum | `bed_exit`（離床）/ `possible_fall`（疑似跌倒）/ `abnormal_transition`（異常姿勢轉換）/ `prolonged_sitting`（長期坐著）/ `night_wandering`（離床過久）/ `medical_order_violation`（違反醫囑限制）/ `abnormal_vitals`（生理數據異常）/ `prolonged_bathroom`（如廁過久） |
 | `priority` | enum | `"green"` / `"yellow"` / `"red"`，同 `OverviewUpdate.priority` |
 | `reason` | string | 人類可讀描述，例如「夜間離床超過 5 分鐘」「疑似跌倒」 |
 | `location` | enum | `in_bed`（床上）/ `out_of_bed`（離床）/ `chair`（椅子上）/ `near_door`（門邊）/ `bathroom`（浴廁） |
@@ -215,7 +215,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | `ts` | datetime (ISO 8601, UTC) | 這筆狀態訊息的產生時間 |
 | `vitals` | `Vitals` | 見上方 `Vitals` schema |
 | `active_events` | `WardAgentOutput[]` | 目前所有 `resolved_at` 為 `null` 的事件；可以是空陣列（代表無事件） |
-| `current_posture` | enum \| null | `standing`（站）/ `sitting`（坐）/ `lying`（躺）/ `raising_hand`（舉手）。由 board 直接算好傳過來（`streaming/movenet_pose.py` 的 `stable_pose`），backend 只是存放轉發；模擬房間、board 還沒送過資料、或 board 判斷為 `unknown` 時為 `null` |
+| `current_posture` | enum \| null | `standing`（站）/ `sitting`（坐）/ `lying`（躺）。由 board 直接算好傳過來（`streaming/movenet_pose.py` 的 `stable_pose`），backend 只是存放轉發；模擬房間、board 還沒送過資料、或 board 判斷為 `unknown`／`raising_hand` 時為 `null` |
 | `in_camera` | boolean \| null | 畫面裡有沒有偵測到人，由 board 傳過來。`false` 代表沒偵測到人（`current_posture` 這時一定也是 `null`）；`true` + `current_posture: null` 代表有偵測到人但姿勢判斷不出來（`unknown`）。模擬房間、board 還沒送過資料時為 `null` |
 
 ### `BoardPostureUpdate`（board 連到 `/ws/room/{bed_id}?role=board` 上傳的訊息）

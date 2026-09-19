@@ -11,18 +11,19 @@ import asyncio
 import random
 
 from app import store
+from app.location_rules import evaluate_location
 from app.schemas import EventLocation, EventState, Priority
 from app.vitals_scoring import evaluate_vitals
 
 # (state, reason, location) 的假事件劇本庫，模擬 Ward Agent 判斷出的結果
-# 注意：abnormal_vitals 不在這裡——它現在由 run_vitals_alerting 依實際 vitals
-# 數值（NEWS2 改編門檻）產生，不用隨機劇本，避免兩邊各自開一筆互相打架。
+# 注意：abnormal_vitals、night_wandering、prolonged_bathroom 都不在這裡——這三個
+# 現在各自由 run_vitals_alerting / run_location_alerting 依實際數據（vitals 門檻、
+# 離床/如廁持續時間）產生，不用隨機劇本，避免兩邊各自開一筆互相打架。
 _EVENT_LIBRARY: list[tuple[EventState, str, EventLocation]] = [
     ("bed_exit", "夜間離床超過 5 分鐘", "out_of_bed"),
     ("possible_fall", "疑似跌倒", "out_of_bed"),
     ("abnormal_transition", "偵測到異常姿勢轉換", "in_bed"),
     ("prolonged_sitting", "長時間維持坐姿", "chair"),
-    ("night_wandering", "夜間遊蕩", "near_door"),
 ]
 
 
@@ -60,7 +61,7 @@ async def run_vitals_alerting(interval_seconds: float = 2.0) -> None:
             if alert is None:
                 for event in store.get_active_events(bed.bed_id):
                     if event.state == "abnormal_vitals":
-                        store.resolve_event(event.event_id)
+                        store.auto_resolve_event(event.event_id)
             else:
                 store.report_event(
                     bed.bed_id,
@@ -68,6 +69,41 @@ async def run_vitals_alerting(interval_seconds: float = 2.0) -> None:
                     priority=alert.priority,
                     reason=alert.reason,
                     location="in_bed",
+                    action="請護理師查看",
+                )
+        await asyncio.sleep(interval_seconds)
+
+
+async def run_bathroom_jitter(interval_seconds: float = 20.0, toggle_probability: float = 0.1) -> None:
+    """Mock 廁所 sensor：demo 用，模擬病患偶爾進出廁所（真的感測器接上後這個任務就不用了，
+    直接呼叫 store.set_in_bathroom() 寫入真實訊號即可，REST/WebSocket 介面不用動）。"""
+    while True:
+        for bed in store.get_all_beds():
+            if random.random() < toggle_probability:
+                store.set_in_bathroom(bed.bed_id, not store.get_in_bathroom(bed.bed_id))
+        await asyncio.sleep(interval_seconds)
+
+
+async def run_location_alerting(interval_seconds: float = 5.0) -> None:
+    """持續評估每床目前離床/如廁多久（見 app/location_rules.py 的門檻）：
+    超過門檻就開新的/更新既有的事件，回到床上／離開廁所就自動解除。"""
+    tracked_states = {"night_wandering", "prolonged_bathroom"}
+    while True:
+        for bed in store.get_all_beds():
+            location = store.get_location(bed.bed_id)
+            duration = store.get_location_duration(bed.bed_id)
+            alert = evaluate_location(location, duration)
+            if alert is None:
+                for event in store.get_active_events(bed.bed_id):
+                    if event.state in tracked_states:
+                        store.auto_resolve_event(event.event_id)
+            else:
+                store.report_event(
+                    bed.bed_id,
+                    state=alert.state,
+                    priority=alert.priority,
+                    reason=alert.reason,
+                    location=alert.location,
                     action="請護理師查看",
                 )
         await asyncio.sleep(interval_seconds)

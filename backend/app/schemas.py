@@ -18,9 +18,10 @@ EventState = Literal[
     "night_wandering",
     "medical_order_violation",
     "abnormal_vitals",
+    "prolonged_bathroom",
 ]
 EventLocation = Literal["in_bed", "out_of_bed", "chair", "near_door", "bathroom"]
-Posture = Literal["standing", "sitting", "lying", "raising_hand"]
+Posture = Literal["standing", "sitting", "lying"]
 
 
 # ---------------------------------------------------------------------------
