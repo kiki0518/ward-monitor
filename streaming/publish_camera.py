@@ -30,6 +30,7 @@ def parse_args(argv=None):
     parser.add_argument('--width', type=positive_int, default=640)
     parser.add_argument('--height', type=positive_int, default=480)
     parser.add_argument('--fps', type=positive_int, default=15)
+    parser.add_argument('--bed-id', default='101', choices=['101'], help='Demo camera bed')
     parser.add_argument('--pose', action='store_true', help='Run MoveNet on a separate JPEG branch')
     parser.add_argument('--model', default='/opt/gopoint-apps/downloads/movenet_quant_vela.tflite')
     parser.add_argument('--delegate', default='/usr/lib/libethosu_delegate.so')
@@ -78,9 +79,11 @@ def run(args, Gst, connect):
         if __package__:
             from .movenet_pose import MoveNetPose, print_pose
             from .pose_worker import PoseWorker
+            from .board_reporter import BoardReporter
         else:
             from movenet_pose import MoveNetPose, print_pose
             from pose_worker import PoseWorker
+            from board_reporter import BoardReporter
         # Fail visibly before opening the camera if the model/delegate is unavailable.
         pose = MoveNetPose(args.model, args.delegate)
     pipeline = Gst.parse_launch(build_pipeline(args))
@@ -88,13 +91,16 @@ def run(args, Gst, connect):
     bus = pipeline.get_bus()
     url = f'ws://{args.server}:{args.port}/ws/camera/publish'
     worker = None
+    reporter = None
     try:
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError('Unable to start camera pipeline')
         if pose is not None:
+            reporter = BoardReporter(args.server, args.port, args.bed_id)
+            reporter.start()
             worker = PoseWorker(
                 pipeline.get_by_name('pose_frames'), Gst, pose.infer_jpeg,
-                print_pose, args.pose_print_interval,
+                print_pose, args.pose_print_interval, on_result=reporter.submit,
             )
             worker.start()
             print('MoveNet branch started; JPEG streaming and inference run independently.', flush=True)
@@ -138,6 +144,8 @@ def run(args, Gst, connect):
         pipeline.set_state(Gst.State.NULL)
         if worker is not None:
             worker.join()
+        if reporter is not None:
+            reporter.stop()
 
 
 def main(argv=None):

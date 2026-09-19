@@ -22,6 +22,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
 from app import report_generator, simulator, store
 from app.camera_stream import CameraStream
@@ -99,6 +100,7 @@ def report_possible_fall(bed_id: str, report: PossibleFallReport):
         raise HTTPException(status_code=404, detail="Bed not found")
     return store.report_event(
         bed_id,
+        ts=report.ts,
         state="possible_fall",
         priority="red",
         reason="疑似跌倒",
@@ -169,6 +171,7 @@ async def _handle_viewer_connection(websocket: WebSocket, bed_id: str) -> None:
                 active_events=store.get_active_events(bed_id),
                 current_posture=store.get_posture(bed_id),
                 in_camera=store.get_in_camera(bed_id),
+                location=store.get_location(bed_id) if store.get_in_camera(bed_id) is not None else None,
             )
             await websocket.send_json(update.model_dump(mode="json"))
             await asyncio.sleep(1.5)
@@ -179,8 +182,18 @@ async def _handle_viewer_connection(websocket: WebSocket, bed_id: str) -> None:
 async def _handle_board_connection(websocket: WebSocket, bed_id: str) -> None:
     try:
         while True:
-            raw = await websocket.receive_json()
-            update = BoardPostureUpdate(**{**raw, "bed_id": bed_id})
+            try:
+                raw = await websocket.receive_json()
+            except ValueError:
+                await websocket.close(code=1008, reason="Invalid JSON")
+                return
+            try:
+                if not isinstance(raw, dict):
+                    raise ValueError("Expected JSON object")
+                update = BoardPostureUpdate(**{**raw, "bed_id": bed_id})
+            except (ValidationError, ValueError):
+                await websocket.close(code=1008, reason="Invalid board posture")
+                return
             store.set_posture(bed_id, update.current_posture)
             store.set_in_camera(bed_id, update.in_camera)
     except WebSocketDisconnect:

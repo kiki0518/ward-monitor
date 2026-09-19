@@ -7,7 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { connectRoomSocket, fetchBeds } from "../services/ws";
 import { useDismissedEvents } from "../context/DismissedEventsContext";
-import { GENDER_LABEL } from "../constants/labels";
+import { GENDER_LABEL, LOCATION_LABEL } from "../constants/labels";
 import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
@@ -28,6 +28,7 @@ function RoomDetailView({ bedId }) {
   const [patient, setPatient] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
+  const [location, setLocation] = useState(null);
   const { dismissedIds, dismissEvent } = useDismissedEvents();
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
@@ -50,8 +51,9 @@ function RoomDetailView({ bedId }) {
       (state) => {
         setVitalsHistory((prev) => [...prev, state.vitals].slice(-VITALS_HISTORY_LIMIT));
         setActiveEvents(state.active_events);
+        setLocation(state.location ?? null);
       },
-      () => {},
+      () => setLocation(null),
     );
 
     return () => socket.close();
@@ -93,6 +95,9 @@ function RoomDetailView({ bedId }) {
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <VideoFeed bedId={bedId} />
+            <p className="mt-3 text-sm text-[#18332d]" role="status">
+              目前位置：{LOCATION_LABEL[location] ?? "等待辨識"}
+            </p>
           </div>
           <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <h2 className="text-base font-semibold text-[#18332d] mb-4">處理紀錄</h2>

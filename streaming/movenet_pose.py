@@ -1,12 +1,8 @@
-"""MoveNet inference and pose rules adapted from the supplied movenet_test.py.
-
-No camera is opened here. Streaming passes a copy of a camera-native JPEG.
-The classification thresholds, coordinate convention and history rules are unchanged.
-"""
+"""Headless rules adapted from movenet_with_fall_with_unknown.py; camera supplied by tee."""
 import math
 import time
+from datetime import datetime, timezone
 from collections import Counter, deque
-
 import cv2
 import numpy as np
 
@@ -18,9 +14,31 @@ KEYPOINT_THRESHOLD = 0.2
 
 PRINT_INTERVAL = 1.0
 
-POSE_HISTORY_SIZE = 5
+MIN_HUMAN_KEYPOINTS = 5
+
+UNKNOWN_HOLD_SECONDS = 2.0
+
+POSE_HISTORY_SIZE = 7
+
+FALL_LOOKBACK_SECONDS = 0.7
+
+FALL_HIP_DROP_THRESHOLD = 0.12
+
+FALL_HIP_LOW_THRESHOLD = 0.7
+
+FALL_SHOULDER_LOW_THRESHOLD = 0.4
+
+FALL_CONFIRM_FRAMES = 3
+
+FALL_HOLD_SECONDS = 3.0
+
+FALL_MOTION_WINDOW_SECONDS = 1.0
 
 KEYPOINT_NAMES = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle']
+
+FACE_KEYPOINT_NAMES = {'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear'}
+
+FACE_BORDER_MARGIN = 0.01
 
 def midpoint(p1, p2):
     return ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
@@ -31,10 +49,6 @@ def point_distance(p1, p2):
     return math.sqrt(dx * dx + dy * dy)
 
 def joint_angle(a, b, c):
-    """
-    Calculate angle ABC in degrees.
-    b is the joint.
-    """
     ba = np.array([a[0] - b[0], a[1] - b[1]], dtype=np.float32)
     bc = np.array([c[0] - b[0], c[1] - b[1]], dtype=np.float32)
     norm_ba = np.linalg.norm(ba)
@@ -57,21 +71,6 @@ def at_least_one_visible(kp, name1, name2):
     return kp[name1]['score'] >= KEYPOINT_THRESHOLD or kp[name2]['score'] >= KEYPOINT_THRESHOLD
 
 def normalize_keypoints(kp):
-    """
-    Convert MoveNet coordinates into body-centered coordinates.
-
-    Origin:
-        hip center = (0, 0)
-
-    X:
-        right = positive
-
-    Y:
-        up = positive
-
-    Scale:
-        shoulder width = 1
-    """
     shoulder_ok = at_least_one_visible(kp, 'left_shoulder', 'right_shoulder')
     hip_ok = at_least_one_visible(kp, 'left_hip', 'right_hip')
     if not shoulder_ok or not hip_ok:
@@ -106,7 +105,7 @@ def normalize_keypoints(kp):
 def classify_pose(kp):
     normalized = normalize_keypoints(kp)
     if normalized is None:
-        return {'pose_class': 'unknown', 'base_pose': 'unknown', 'raising_hand': False, 'left_hand_up': False, 'right_hand_up': False, 'left_knee_angle': None, 'right_knee_angle': None, 'normalized': None}
+        return None
     n = normalized
     left_shoulder_valid = n['left_shoulder']['score'] >= KEYPOINT_THRESHOLD
     right_shoulder_valid = n['right_shoulder']['score'] >= KEYPOINT_THRESHOLD
@@ -118,20 +117,8 @@ def classify_pose(kp):
         shoulder_center = (n['right_shoulder']['x'], n['right_shoulder']['y'])
     torso_dx = abs(shoulder_center[0])
     torso_dy = abs(shoulder_center[1])
-    left_hand_up = False
-    right_hand_up = False
-    if visible(n, 'left_wrist', 'left_shoulder'):
-        left_hand_up = n['left_wrist']['y'] > n['left_shoulder']['y'] + 0.2
-    if visible(n, 'right_wrist', 'right_shoulder'):
-        right_hand_up = n['right_wrist']['y'] > n['right_shoulder']['y'] + 0.2
-    raising_hand = left_hand_up or right_hand_up
-    if torso_dx > torso_dy * 0.85:
-        base_pose = 'lying'
-        if raising_hand:
-            pose_class = 'raising_hand'
-        else:
-            pose_class = 'lying'
-        return {'pose_class': pose_class, 'base_pose': base_pose, 'raising_hand': raising_hand, 'left_hand_up': left_hand_up, 'right_hand_up': right_hand_up, 'left_knee_angle': None, 'right_knee_angle': None, 'normalized': normalized}
+    if torso_dx > torso_dy * 3.0:
+        return {'pose_class': 'lying', 'base_pose': 'lying', 'left_knee_angle': None, 'right_knee_angle': None, 'normalized': normalized}
     left_knee_angle = None
     right_knee_angle = None
     if visible(n, 'left_hip', 'left_knee', 'left_ankle'):
@@ -144,28 +131,141 @@ def classify_pose(kp):
     if right_knee_angle is not None:
         valid_knee_angles.append(right_knee_angle)
     if len(valid_knee_angles) == 0:
-        base_pose = 'unknown'
+        return None
+    avg_knee_angle = sum(valid_knee_angles) / len(valid_knee_angles)
+    if avg_knee_angle < 145:
+        base_pose = 'sitting'
     else:
-        avg_knee_angle = sum(valid_knee_angles) / len(valid_knee_angles)
-        if avg_knee_angle < 145:
-            base_pose = 'sitting'
-        else:
-            base_pose = 'standing'
-    if raising_hand:
-        pose_class = 'raising_hand'
-    else:
-        pose_class = base_pose
-    return {'pose_class': pose_class, 'base_pose': base_pose, 'raising_hand': raising_hand, 'left_hand_up': left_hand_up, 'right_hand_up': right_hand_up, 'left_knee_angle': left_knee_angle, 'right_knee_angle': right_knee_angle, 'normalized': normalized}
+        base_pose = 'standing'
+    return {'pose_class': base_pose, 'base_pose': base_pose, 'left_knee_angle': left_knee_angle, 'right_knee_angle': right_knee_angle, 'normalized': normalized}
 
 def get_stable_pose(history):
     if len(history) == 0:
-        return 'unknown'
+        return None
     counter = Counter(history)
-    if 'unknown' in counter:
-        del counter['unknown']
-    if len(counter) == 0:
-        return 'unknown'
     return counter.most_common(1)[0][0]
+
+def get_center_y(kp, left_name, right_name):
+    """
+    Return average image-normalized y of visible left/right points.
+    Uses original image coordinates: y increases downward.
+    """
+    ys = []
+    for name in (left_name, right_name):
+        p = kp[name]
+        if p['score'] >= KEYPOINT_THRESHOLD and 0.001 < p['x'] < 0.999 and (0.001 < p['y'] < 0.999):
+            ys.append(p['y'])
+    if len(ys) == 0:
+        return None
+    return sum(ys) / len(ys)
+
+def update_fall_detector(keypoints, now, motion_history, fall_candidate_count, fall_hold_until, fall_motion_until):
+    """
+    Two-stage fall detection:
+
+    Stage 1:
+        detect a fast downward hip movement once
+        -> open a short "fall motion window"
+
+    Stage 2:
+        during that window, confirm that hip and shoulder
+        have moved to a low position for several frames
+
+    Returns:
+        fall_detected,
+        fall_candidate,
+        fall_candidate_count,
+        fall_hold_until,
+        fall_motion_until,
+        hip_y,
+        shoulder_y,
+        hip_drop
+    """
+    hip_y = get_center_y(keypoints, 'left_hip', 'right_hip')
+    shoulder_y = get_center_y(keypoints, 'left_shoulder', 'right_shoulder')
+    if hip_y is not None:
+        motion_history.append((now, hip_y))
+    while len(motion_history) > 0 and now - motion_history[0][0] > FALL_LOOKBACK_SECONDS:
+        motion_history.popleft()
+    hip_drop = None
+    if hip_y is not None and len(motion_history) >= 2:
+        old_time, old_hip_y = motion_history[0]
+        hip_drop = hip_y - old_hip_y
+    if hip_drop is not None and hip_drop >= FALL_HIP_DROP_THRESHOLD:
+        fall_motion_until = now + FALL_MOTION_WINDOW_SECONDS
+    motion_triggered = now < fall_motion_until
+    low_body = hip_y is not None and hip_y >= FALL_HIP_LOW_THRESHOLD
+    low_upper_body = shoulder_y is not None and shoulder_y >= FALL_SHOULDER_LOW_THRESHOLD
+    fall_candidate = motion_triggered and low_body and low_upper_body
+    if fall_candidate:
+        fall_candidate_count += 1
+    else:
+        fall_candidate_count = 0
+    if fall_candidate_count >= FALL_CONFIRM_FRAMES:
+        fall_hold_until = now + FALL_HOLD_SECONDS
+    fall_detected = now < fall_hold_until
+    return (fall_detected, fall_candidate, fall_candidate_count, fall_hold_until, fall_motion_until, hip_y, shoulder_y, hip_drop)
+
+def display_keypoint_valid(name, point):
+    """
+    Display-only filter.
+
+    Body keypoints keep the original V3 display rule.
+    Facial keypoints are additionally ignored when they are stuck
+    on an image border, which prevents face points/lines from
+    jumping to the upper-left corner.
+    """
+    if point['score'] < KEYPOINT_THRESHOLD:
+        return False
+    if name in FACE_KEYPOINT_NAMES:
+        return FACE_BORDER_MARGIN < point['x'] < 1.0 - FACE_BORDER_MARGIN and FACE_BORDER_MARGIN < point['y'] < 1.0 - FACE_BORDER_MARGIN
+    return True
+
+class PoseTracker:
+    """Preserve the supplied temporal rules, separating fall events from posture."""
+    def __init__(self):
+        self.history = deque(maxlen=POSE_HISTORY_SIZE)
+        self.last_valid_pose = 'standing'
+        self.non_human_since = None
+        self.motion_history = deque()
+        self.candidate_count = 0
+        self.hold_until = self.motion_until = 0.0
+
+    def update(self, keypoints, now):
+        valid = {name for name in KEYPOINT_NAMES if display_keypoint_valid(name, keypoints[name])}
+        human = (len(valid) >= MIN_HUMAN_KEYPOINTS
+                 and bool(valid & {'left_shoulder', 'right_shoulder'})
+                 and bool(valid & {'left_hip', 'right_hip'})
+                 and bool(valid & {'left_knee', 'right_knee', 'left_ankle', 'right_ankle'}))
+        result = classify_pose(keypoints)
+        if result is not None:
+            self.last_valid_pose = result['pose_class']
+            self.history.append(self.last_valid_pose)
+        stable = get_stable_pose(self.history) or self.last_valid_pose
+        if human:
+            self.non_human_since = None
+        elif self.non_human_since is None:
+            self.non_human_since = now
+        unknown = self.non_human_since is not None and now - self.non_human_since >= UNKNOWN_HOLD_SECONDS
+        raw = self.last_valid_pose
+        if unknown:
+            raw = stable = 'unknown'
+        (fall, candidate, self.candidate_count, self.hold_until, self.motion_until,
+         hip_y, shoulder_y, hip_drop) = update_fall_detector(
+            keypoints, now, self.motion_history, self.candidate_count,
+            self.hold_until, self.motion_until)
+        return {
+            'pose_class': raw, 'stable_pose': stable,
+            'base_pose': result['base_pose'] if result else raw,
+            'normalized': result['normalized'] if result else None,
+            'left_knee_angle': result['left_knee_angle'] if result else None,
+            'right_knee_angle': result['right_knee_angle'] if result else None,
+            'in_camera': any(p['score'] >= KEYPOINT_THRESHOLD for p in keypoints.values()),
+            'human_shape': human, 'unknown_active': unknown,
+            'fall_detected': fall and not unknown, 'fall_candidate': candidate,
+            'hip_y': hip_y, 'shoulder_y': shoulder_y, 'hip_drop': hip_drop,
+            'pose_history': list(self.history),
+        }
 
 
 class MoveNetPose:
@@ -192,7 +292,7 @@ class MoveNetPose:
         self.input_h, self.input_w = int(shape[1]), int(shape[2])
         if self.input_info['dtype'] not in (np.uint8, np.int8, np.float32):
             raise ValueError(f'Unsupported input dtype: {self.input_info["dtype"]}')
-        self.history = deque(maxlen=POSE_HISTORY_SIZE)
+        self.tracker = PoseTracker()
         print(f'Model input: {self.input_w} x {self.input_h}; dtype: {self.input_info["dtype"]}', flush=True)
 
     def infer_jpeg(self, jpeg):
@@ -235,11 +335,9 @@ class MoveNetPose:
                 'x': x, 'y': y, 'score': score,
                 'pixel_x': int(x * frame_w), 'pixel_y': int(y * frame_h),
             }
-        result = classify_pose(keypoints)
-        self.history.append(result['pose_class'])
+        result = self.tracker.update(keypoints, time.monotonic())
         return {
-            **result, 'stable_pose': get_stable_pose(self.history),
-            'pose_history': list(self.history), 'keypoints': keypoints,
+            **result, 'ts': datetime.now(timezone.utc).isoformat(), 'keypoints': keypoints,
             'inference_ms': inference_ms, 'frame_width': frame_w, 'frame_height': frame_h,
         }
 
@@ -251,10 +349,8 @@ def print_pose(result):
         f'Raw pose: {result["pose_class"]}',
         f'Stable pose: {result["stable_pose"]}',
         f'Base pose: {result["base_pose"]}',
-        f'Raising hand: {result["raising_hand"]}',
-        f'Left hand up: {result["left_hand_up"]}',
-        f'Right hand up: {result["right_hand_up"]}',
         f'Pose history: {result["pose_history"]}',
+        f'Fall detected: {result["fall_detected"]}; unknown: {result["unknown_active"]}',
     ]
     for side in ('left', 'right'):
         angle = result[f'{side}_knee_angle']

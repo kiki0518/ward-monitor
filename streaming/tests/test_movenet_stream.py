@@ -90,7 +90,7 @@ class PoseRulesTests(unittest.TestCase):
         points = self.keypoints()
         points['left_wrist']['y'] = .05
         result = pose.classify_pose(points)
-        self.assertEqual(result['pose_class'], 'raising_hand')
+        self.assertEqual(result['pose_class'], 'standing')
         self.assertEqual(result['base_pose'], 'standing')
         points = self.keypoints()
         for side in ('left', 'right'):
@@ -102,9 +102,40 @@ class PoseRulesTests(unittest.TestCase):
         points = self.keypoints()
         for point in points.values():
             point['score'] = 0
-        self.assertEqual(pose.classify_pose(points)['pose_class'], 'unknown')
+        self.assertIsNone(pose.classify_pose(points))
         self.assertEqual(pose.get_stable_pose(['unknown', 'standing', 'standing', 'sitting']), 'standing')
         self.assertEqual(pose.get_stable_pose(['unknown'] * 5), 'unknown')
+
+    def test_unknown_hold_and_presence_are_distinct(self):
+        tracker = pose.PoseTracker()
+        points = self.keypoints()
+        self.assertEqual(tracker.update(points, 0)['stable_pose'], 'standing')
+        for point in points.values():
+            point['score'] = 0
+        self.assertFalse(tracker.update(points, 1)['in_camera'])
+        self.assertEqual(tracker.update(points, 2.9)['stable_pose'], 'standing')
+        self.assertEqual(tracker.update(points, 3)['stable_pose'], 'unknown')
+        points['nose']['score'] = .9
+        result = tracker.update(points, 4)
+        self.assertTrue(result['in_camera'])
+        self.assertEqual(result['stable_pose'], 'unknown')
+        self.assertEqual(tracker.update(self.keypoints(), 5)['stable_pose'], 'standing')
+
+    def test_fall_requires_motion_and_three_low_frames(self):
+        tracker = pose.PoseTracker()
+        points = self.keypoints()
+        self.assertFalse(tracker.update(points, 0)['fall_detected'])
+        for side in ('left', 'right'):
+            points[f'{side}_hip']['y'] = .75
+            points[f'{side}_shoulder']['y'] = .5
+        self.assertFalse(tracker.update(points, .1)['fall_detected'])
+        self.assertFalse(tracker.update(points, .2)['fall_detected'])
+        result = tracker.update(points, .3)
+        self.assertTrue(result['fall_detected'])
+        self.assertNotEqual(result['stable_pose'], 'fall')
+        stationary = pose.PoseTracker()
+        for i in range(10):
+            self.assertFalse(stationary.update(points, i * .1)['fall_detected'])
 
     def estimator(self, interpreter):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -194,7 +225,7 @@ class BranchTests(unittest.TestCase):
             MessageType=SimpleNamespace(ERROR=1, EOS=2),
         )
         args = publisher.parse_args(['--server', 'localhost', '--pose'])
-        with patch.object(pose, 'MoveNetPose', return_value=SimpleNamespace(infer_jpeg=infer)), patch.object(pose, 'print_pose'), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(pose, 'MoveNetPose', return_value=SimpleNamespace(infer_jpeg=infer)), patch.object(pose, 'print_pose'), patch('streaming.board_reporter.BoardReporter'), contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(KeyboardInterrupt):
                 publisher.run(args, gst, connect)
         self.assertEqual(states[-1], 'null')

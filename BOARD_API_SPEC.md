@@ -63,7 +63,7 @@ Demo 目前只有 **`bed_id = "101"`** 這一床接真的板子，其他床都�
 | `"lying"` | `"lying"` |
 | `"unknown"` | `null`（**不要**送字串 `"unknown"`） |
 
-`current_posture` 只接受這 4 個字串或 `null`，其他字串 backend 會拒絕整筆訊息。
+`current_posture` 只接受上述 3 個字串或 `null`，其他字串 backend 會拒絕整筆訊息。
 
 ### 多久送一次
 
@@ -125,3 +125,17 @@ def report_possible_fall(server_ip: str, bed_id: str = "101"):
 ```
 
 ---
+
+## 整合入口
+
+板子執行 `python3 streaming/movenet_test.py --server SERVER_IP`，預設 `/dev/video2`、床位 101。
+同一鏡頭以 GStreamer tee 分出原始 MJPEG 與 MoveNet 處理兩路。
+新版跌倒狀態只走事件 API；姿勢欄位保留平滑後站／坐／躺／unknown 的對應值。
+後端使用板子 `ts` 記錄跌倒事件時間，拒絕無時區的時間。
+無效姿勢 JSON 以 WebSocket 1008 關閉；`in_camera=false` 且姿勢非 null 同樣拒絕。
+101 不參與隨機事件腳本，其他床位繼續模擬。
+
+`unknown` 仍以 `current_posture: null` 上傳，後端將它判為 `out_of_bed`（離床），
+即使 `in_camera: true` 也一樣。保留原程式連續 2 秒非人形才進入 unknown 的規則。
+房間狀態 WebSocket 新增 `location` 欄位，前端顯示「目前位置：離床」；
+尚未收到板子資料時 `location: null`，顯示「等待辨識」。真實廁所訊號仍優先，101 不使用隨機廁所訊號。
