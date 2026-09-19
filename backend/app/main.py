@@ -3,7 +3,8 @@
 #   GET  /api/beds                      -> 床位靜態名冊
 #   WS   /ws/overview                   -> 總覽頁，持續推送 OverviewUpdate[]
 #   WS   /ws/room/{bed_id}              -> RoomDetail 頁：state(vitals+active_events) + WebRTC signaling
-#   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理
+#   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
+#   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理（idempotent）
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -45,6 +46,13 @@ def health_check():
 @app.get("/api/beds", response_model=list[BedInfo])
 def list_beds():
     return store.get_all_beds()
+
+
+@app.get("/api/beds/{bed_id}/events", response_model=list[WardAgentOutput])
+def list_bed_events(bed_id: str):
+    if not store.bed_exists(bed_id):
+        raise HTTPException(status_code=404, detail="Bed not found")
+    return store.get_event_history(bed_id)
 
 
 @app.post("/api/events/{event_id}/resolve", response_model=WardAgentOutput)

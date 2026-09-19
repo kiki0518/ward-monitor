@@ -62,11 +62,12 @@ class OverviewUpdate(BaseModel):
     bed_id: str
     priority: Priority
     reason: str
+    active_event_count: int
     updated_at: datetime
 
 
 class WardAgentOutput(BaseModel):
-    """事件：RoomDetailUpdate.active_events 的元素，也是 resolve 的回傳值"""
+    """事件：RoomDetailUpdate.active_events 的元素，也是 resolve/歷史查詢的回傳值"""
 
     event_id: str
     bed_id: str
@@ -76,6 +77,7 @@ class WardAgentOutput(BaseModel):
     location: EventLocation
     action: Optional[str] = None
     started_at: datetime
+    last_seen_at: datetime
     resolved_at: Optional[datetime] = None
 
 

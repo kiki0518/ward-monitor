@@ -9,11 +9,9 @@
 
 import asyncio
 import random
-import uuid
-from datetime import datetime, timezone
 
 from app import store
-from app.schemas import EventLocation, EventState, Priority, WardAgentOutput
+from app.schemas import EventLocation, EventState, Priority
 
 # (state, reason, location) 的假事件劇本庫，模擬 Ward Agent 判斷出的結果
 _EVENT_LIBRARY: list[tuple[EventState, str, EventLocation]] = [
@@ -61,18 +59,13 @@ async def run_event_script(interval_seconds: float = 12.0) -> None:
             bed = random.choice(candidates)
             state, reason, location = random.choice(_EVENT_LIBRARY)
             priority: Priority = "red" if state == "possible_fall" else random.choice(["yellow", "red"])
-            store.add_event(
-                WardAgentOutput(
-                    event_id=f"evt_{uuid.uuid4().hex[:8]}",
-                    bed_id=bed.bed_id,
-                    state=state,
-                    priority=priority,
-                    reason=reason,
-                    location=location,
-                    action="請護理師查看",
-                    started_at=datetime.now(timezone.utc),
-                    resolved_at=None,
-                )
+            store.report_event(
+                bed.bed_id,
+                state=state,
+                priority=priority,
+                reason=reason,
+                location=location,
+                action="請護理師查看",
             )
         else:
             active_beds = [b for b in beds if store.get_active_events(b.bed_id)]
