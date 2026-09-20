@@ -7,11 +7,13 @@ import { DismissedEventsProvider } from "./context/DismissedEventsContext";
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Overview />} />
-        <Route path="/room/:bedId" element={<RoomDetail />} />
-        <Route path="/nurse" element={<NurseView />} />
-      </Routes>
+      <DismissedEventsProvider>
+        <Routes>
+          <Route path="/" element={<Overview />} />
+          <Route path="/room/:bedId" element={<RoomDetail />} />
+          <Route path="/nurse" element={<NurseView />} />
+        </Routes>
+      </DismissedEventsProvider>
     </BrowserRouter>
   );
 }
