@@ -117,6 +117,12 @@ python scripts/trigger_long_sitting.py  # 等偵測到坐著 -> 觸發 103 長�
 
 板子還沒連上時 `in_camera` 會一直是 `null`，三支腳本都會卡在「等待偵測」，這是預期行為。可以連 `ws/room/101` 看目前的 `in_camera`/`current_posture`（見上面「確認 Backend 是否正常運作」）確認板子有沒有連上、有沒有在送資料。
 
+板子/攝影機不在或還沒接上時，想單獨測 backend 這條事件流程，三支都加 `--debug`：最多等 5 秒，時間到了不管有沒有真的偵測到都會強制觸發（這段時間如果真的偵測到了還是會提早觸發，不會傻等滿 5 秒）：
+
+```bash
+python scripts/trigger_fall.py --debug
+```
+
 如果 server 不是跑在 `localhost:8000`，三支都接受一個可選參數，例如：
 
 ```bash

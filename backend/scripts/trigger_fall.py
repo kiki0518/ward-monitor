@@ -2,40 +2,65 @@
 """Demo 用：偵測到 101 床鏡頭前有人躺下，才觸發「疑似跌倒」。
 
 用法：
-    python backend/scripts/trigger_fall.py [server_url]
+    python backend/scripts/trigger_fall.py [server_url] [--debug]
 
 連到 101 床即時姿勢資料（/ws/room/101，跟真的板子共用同一份 in_camera/
 current_posture），等偵測到「鏡頭前有人躺下」（in_camera=true 且
 current_posture=="lying"）才呼叫 POST /api/beds/101/possible-fall。
 Ctrl+C 可以中途取消。預設 server_url 是 http://localhost:8000。重複觸發
 不會開出多筆重複事件（backend 有去重機制，見 API_CONTRACT.md「事件生命週期」）。
+
+`--debug`：板子/攝影機不在或還沒接上時測試用，最多等 5 秒，時間到了不管有沒有
+真的偵測到都直接觸發，方便單獨測 backend 這條事件流程。
 """
 
 import json
 import sys
+import time
 from datetime import datetime, timezone
 
 import requests
 from websockets.sync.client import connect
 
 BED_ID = "101"
+DEBUG_TIMEOUT_SECONDS = 5.0
 
 
-def wait_for_fall(ws_url: str) -> None:
-    print(f"等待偵測：{BED_ID} 床鏡頭前有人躺下...")
+def parse_args(argv: list[str]) -> tuple[str, bool]:
+    debug = "--debug" in argv
+    positional = [arg for arg in argv if not arg.startswith("--")]
+    server_url = positional[0] if positional else "http://localhost:8000"
+    return server_url, debug
+
+
+def wait_for_fall(ws_url: str, debug: bool) -> None:
+    suffix = f"（--debug：最多等 {DEBUG_TIMEOUT_SECONDS:.0f} 秒，時間到強制觸發）" if debug else ""
+    print(f"等待偵測：{BED_ID} 床鏡頭前有人躺下...{suffix}")
+    deadline = time.monotonic() + DEBUG_TIMEOUT_SECONDS if debug else None
     with connect(ws_url) as ws:
         while True:
-            state = json.loads(ws.recv())
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    print(f"--debug：{DEBUG_TIMEOUT_SECONDS:.0f} 秒到了，沒偵測到也強制觸發")
+                    return
+                try:
+                    raw = ws.recv(timeout=remaining)
+                except TimeoutError:
+                    continue
+            else:
+                raw = ws.recv()
+            state = json.loads(raw)
             if state.get("in_camera") and state.get("current_posture") == "lying":
                 return
 
 
 def main() -> None:
-    server_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
+    server_url, debug = parse_args(sys.argv[1:])
     ws_url = server_url.replace("http://", "ws://").replace("https://", "wss://") + f"/ws/room/{BED_ID}"
 
     try:
-        wait_for_fall(ws_url)
+        wait_for_fall(ws_url, debug)
     except KeyboardInterrupt:
         print("已取消")
         return
@@ -43,7 +68,7 @@ def main() -> None:
     url = f"{server_url}/api/beds/{BED_ID}/possible-fall"
     response = requests.post(url, json={"ts": datetime.now(timezone.utc).isoformat()})
     response.raise_for_status()
-    print(f"偵測到躺下，觸發成功：{BED_ID} 床 疑似跌倒")
+    print(f"觸發成功：{BED_ID} 床 疑似跌倒")
     print(response.json())
 
 
