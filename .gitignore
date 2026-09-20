@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 venv/
 
-# Runtime-generated (cleared on every backend startup, not persisted data)
+# Runtime-generated data (case reports persist across restarts)
 backend/app/data/event_history.json
 backend/app/data/case_reports.json
 
@@ -17,3 +17,13 @@ dist/
 
 # Local demo notes, not shared
 DEMO.md
+# Persistent handover drafts and submitted records
+backend/app/data/handover.sqlite3*
+backend/app/data/case_reports.tmp
+
+# Local inference binaries, weights and machine-specific settings
+.runtime/
+models/
+backend/taide.env.local
+
+backend/app/data/case_reports.legacy-backup.json

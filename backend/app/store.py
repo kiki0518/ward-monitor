@@ -18,6 +18,7 @@
 import csv
 import json
 import uuid
+from threading import RLock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -54,6 +55,8 @@ _GENDER_FROM_CSV = {"男": "male", "女": "female"}
 _BEDS_CSV_PATH = Path(__file__).parent / "data" / "beds.csv"
 _EVENT_HISTORY_JSON_PATH = Path(__file__).parent / "data" / "event_history.json"
 _CASE_REPORTS_JSON_PATH = Path(__file__).parent / "data" / "case_reports.json"
+
+_case_lock = RLock()
 
 _beds: dict[str, BedInfo] = {}
 _vitals: dict[str, Vitals] = {}
@@ -95,24 +98,41 @@ def _append_to_event_history_file(event: WardAgentOutput) -> None:
 
 
 def _init_case_reports_file() -> None:
-    """每次啟動都清空病例紀錄 JSON 檔案：只記錄這次執行期間護理站填寫的紀錄。"""
-    _CASE_REPORTS_JSON_PATH.write_text("[]", encoding="utf-8")
+    """Preserve treatment records across restarts."""
+    with _case_lock:
+        if not _CASE_REPORTS_JSON_PATH.exists():
+            _CASE_REPORTS_JSON_PATH.write_text("[]", encoding="utf-8")
 
 
 def _append_to_case_reports_file(report: CaseReport) -> None:
-    reports = json.loads(_CASE_REPORTS_JSON_PATH.read_text(encoding="utf-8"))
-    reports.append(report.model_dump(mode="json"))
-    _CASE_REPORTS_JSON_PATH.write_text(json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _case_lock:
+        reports = [r.model_dump(mode="json") for r in get_case_reports()]
+        reports.append(report.model_dump(mode="json"))
+        temporary = _CASE_REPORTS_JSON_PATH.with_suffix(".tmp")
+        temporary.write_text(json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(_CASE_REPORTS_JSON_PATH)
 
 
 def get_case_reports() -> list[CaseReport]:
-    reports = json.loads(_CASE_REPORTS_JSON_PATH.read_text(encoding="utf-8"))
-    return [CaseReport(**r) for r in reports]
-
-
-def clear_case_reports() -> None:
-    """匯出報告之後呼叫：清空 case_reports.json，避免下次匯出重複包含同一批病例。"""
-    _init_case_reports_file()
+    with _case_lock:
+        _init_case_reports_file()
+        original = _CASE_REPORTS_JSON_PATH.read_text(encoding="utf-8")
+        reports = [CaseReport(**r) for r in json.loads(original)]
+        changed = False
+        # Legacy demo records used bed IDs only. Bind them once to the fixed
+        # demo roster, then persist the snapshot so later renames cannot rebind them.
+        for report in reports:
+            if not report.patient_name and report.bed_id in _beds:
+                report.patient_name = _beds[report.bed_id].patient_name
+                changed = True
+        if changed:
+            backup = _CASE_REPORTS_JSON_PATH.with_suffix(".legacy-backup.json")
+            if not backup.exists():
+                backup.write_text(original, encoding="utf-8")
+            temporary = _CASE_REPORTS_JSON_PATH.with_suffix(".tmp")
+            temporary.write_text(json.dumps([r.model_dump(mode="json") for r in reports], ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(_CASE_REPORTS_JSON_PATH)
+        return reports
 
 
 def seed_demo_data() -> None:
@@ -328,27 +348,29 @@ def resolve_event(
     """護理站手動標記已處理，一定要附病例紀錄。Idempotent：已經是 resolved 的事件再呼叫
     一次，直接回傳目前狀態，不覆寫 resolved_at、也不會重複寫入 event_history.json /
     case_reports.json（即使這次傳的內容不一樣）。"""
-    event = get_event(event_id)
-    if event is None:
-        return None
-    if event.resolved_at is None:
-        _mark_resolved(event)
-        _append_to_case_reports_file(
-            CaseReport(
-                event_id=event.event_id,
-                bed_id=event.bed_id,
-                completed_actions=completed_actions,
-                follow_up=follow_up,
-                notes=notes,
-                resolved_at=event.resolved_at,
+    with _case_lock:
+        event = get_event(event_id)
+        if event is None:
+            return None
+        if event.resolved_at is None:
+            _mark_resolved(event)
+            _append_to_case_reports_file(
+                CaseReport(
+                    event_id=event.event_id,
+                    bed_id=event.bed_id,
+                    patient_name=_beds[event.bed_id].patient_name,
+                    completed_actions=completed_actions,
+                    follow_up=follow_up,
+                    notes=notes,
+                    resolved_at=event.resolved_at,
+                )
             )
-        )
-    return event
+        return event
 
 
 def auto_resolve_event(event_id: str) -> Optional[WardAgentOutput]:
     """系統自動解除（例如 vitals 恢復正常、病患回到床上/離開廁所），不是護理站手動處理，
-    所以不會產生病例紀錄（case_reports.json 不會多一筆、不會跑進 PDF 匯出）；還是會進
+    所以不會產生病例紀錄（case_reports.json 不會多一筆、不會成為交班摘要來源）；還是會進
     event_history.json，RoomDetail 的處理紀錄看得到「這件事發生過、後來自動解除了」。
     Idempotent，跟 resolve_event 一樣不會覆寫已經存在的 resolved_at。"""
     event = get_event(event_id)

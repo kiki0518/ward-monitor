@@ -1,4 +1,7 @@
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from app.main import app
@@ -6,6 +9,14 @@ from app import store
 
 
 class BoardApiTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        for field, name in (("_CASE_REPORTS_JSON_PATH", "cases.json"), ("_EVENT_HISTORY_JSON_PATH", "events.json")):
+            override = patch("app.store." + field, Path(temporary.name) / name)
+            override.start()
+            self.addCleanup(override.stop)
+
     def test_posture_and_fall_timestamp_deduplication(self):
         with TestClient(app) as client:
             payload = {'ts': '2026-09-19T14:32:10Z', 'in_camera': True, 'current_posture': None}

@@ -28,6 +28,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 \
   --ws-max-size 2097152 --ws-max-queue 1 --ws-per-message-deflate false
 ```
 
+要使用「AI 交班紀錄」時，請改用 `bash scripts/start-backend.sh` 啟動（會自動載入 TAIDE 環境變數，見下方 [AI 交班紀錄](#ai-交班紀錄)）；直接跑上面的 `uvicorn` 不會載入，按「AI 整理」會回 503。
+
 同一個 FastAPI server 同時提供病房 REST / WebSocket、camera 上傳／觀看 API，
 不需另開串流 backend。床位、模擬生理數據與最新影像均為記憶體狀態，請使用單一 worker。
 React 的 `VideoFeed` 透過 `/ws/camera/view` 顯示 MJPEG；目前全系統只有一支 camera，
@@ -94,3 +96,50 @@ asyncio.run(main())
 ## Demo 手動觸發事件
 
 1 樓（101~124）是刻意排除在隨機模擬之外的展示樓層，只有 101/102/103 這三床會有事件，其他樓層維持完全隨機，當 Overview 頁面的背景氣氛。對應的手動觸發腳本在 `backend/scripts/`，用法見本機的 `DEMO.md`（demo 小抄，未進版控）。
+## AI 交班紀錄
+
+原匯出按鈕改為「產生交班紀錄」：選取同一病人的處理紀錄、日期與班別，TAIDE 整理後可編輯「已完成的處理／需要下一位處理／備註」，按送出才儲存在處理紀錄下方。原始資料不清空，交班紀錄跨重啟保存。
+
+模型尚未部署時，摘要會提示服務未啟用。輕量 TAIDE 模型、啟動方式與限制見 [部署說明](docs/HANDOVER.md)；環境變數範本在 [backend/taide.env.example](backend/taide.env.example)。
+
+### 啟動流程（Intel Mac，本機 CPU 推論）
+
+AI 的串接路徑：瀏覽器「AI 整理」→ 後端 `POST /api/beds/{bed_id}/handover-drafts` → 後端呼叫本機 `llama-server`（`http://127.0.0.1:8080/v1/chat/completions`）→ TAIDE GGUF 模型推論。瀏覽器不會直接連模型。
+
+**第一次設定（只需做一次）**
+
+1. 下載 TAIDE 的 GGUF 模型檔（Hugging Face 需先登入並接受條款，token 不要寫進專案），記下檔案的絕對路徑。
+2. 安裝編譯工具並編譯 `llama-server`（需要 Git、CMake、Ninja、Apple Command Line Tools）：
+   ```bash
+   brew install cmake ninja
+   bash scripts/build-llama.sh    # 產物在 .runtime/llama.cpp（已被 Git 忽略）
+   ```
+3. 建立 `backend/taide.env.local`（已被 Git 忽略），路徑一律用絕對路徑：
+   ```bash
+   export LLAMA_SERVER=/專案絕對路徑/.runtime/llama.cpp/build/bin/llama-server
+   export TAIDE_MODEL_PATH=/絕對路徑/taide-7b-a.2-q4_k_m.gguf
+   ```
+
+**每次啟動（兩個終端，在專案根目錄）**
+
+```bash
+bash scripts/start-taide.sh      # 終端 A：模型服務，載入約 30 秒
+bash scripts/start-backend.sh    # 終端 B：後端，自動載入 TAIDE 環境變數
+```
+
+模型服務就緒可用 `curl http://127.0.0.1:8080/health` 確認（回 200）。之後照上方 Frontend 啟動前端即可。CPU 推論一次摘要約 15–30 秒，按鈕停在處理中屬正常。
+
+**驗證模型連線**（使用虛構資料，不寫入病例或交班紀錄）：
+
+```bash
+source backend/taide.env.example && source backend/taide.env.local
+backend/venv/bin/python scripts/check-taide.py
+```
+
+**常見問題**
+
+- 按「AI 整理」回 `503 AI 摘要服務尚未啟用`：後端沒有載入 `TAIDE_*` 環境變數。停掉後端，改用 `bash scripts/start-backend.sh` 重啟。
+- 回 `502 TAIDE 連線失敗`：模型服務沒開，先執行 `bash scripts/start-taide.sh`。
+- 回 `422 紀錄過長`：減少勾選的處理紀錄筆數。
+- `start-taide.sh` 說找不到 llama-server 或模型：檢查 `backend/taide.env.local` 的路徑是否為絕對路徑且檔案存在。
+- `start-backend.sh` 沒有 `--reload`，修改後端程式碼後要手動重啟。

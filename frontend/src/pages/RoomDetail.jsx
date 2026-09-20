@@ -12,7 +12,7 @@ import VideoFeed from "../components/VideoFeed";
 import VitalsPanel from "../components/VitalsPanel";
 import EventsList from "../components/EventsList";
 import EventHistory from "../components/EventHistory";
-import ExportButton from "../components/ExportButton";
+import HandoverButton, { HandoverHistory } from "../components/Handover";
 import "./RoomDetail.css";
 
 const VITALS_HISTORY_LIMIT = 30;
@@ -91,7 +91,7 @@ function RoomDetailView({ bedId }) {
           <ArrowLeft size={16} />
           返回
         </button>
-        <ExportButton />
+        <HandoverButton bedId={bedId} onSaved={() => setHistoryRefresh(previous => previous + 1)} />
       </div>
       <h1 className="room-detail__title text-2xl font-bold text-[#18332d] mb-1">
         {bedId} 床{patient ? ` · ${patient.patient_name}` : ""}
@@ -110,15 +110,16 @@ function RoomDetailView({ bedId }) {
             </p>
           </div>
           <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
+            <h2 className="text-base font-semibold text-[#18332d] mb-4">待處理事件</h2>
+            <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
+          </section>
+          <HandoverHistory bedId={bedId} refreshKey={historyRefresh} />
+          <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <h2 className="text-base font-semibold text-[#18332d] mb-4">處理紀錄</h2>
             <EventHistory bedId={bedId} refreshKey={historyRefresh} />
           </section>
         </div>
         <div className="flex flex-col gap-6">
-          <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
-            <h2 className="text-base font-semibold text-[#18332d] mb-4">待處理事件</h2>
-            <EventsList events={visibleEvents} onResolved={handleResolved} onDismissed={handleDismissed} />
-          </section>
           <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <h2 className="text-base font-semibold text-[#18332d] mb-4">生理數據</h2>
             <VitalsPanel history={vitalsHistory} />
