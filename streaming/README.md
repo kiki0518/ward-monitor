@@ -89,7 +89,7 @@ test 模式才使用 `videotestsrc ! jpegenc` 產生 JPEG 動畫；實際 camera
 從專案根目錄啟動：
 
 ```bash
-python3 streaming/movenet_test.py --server 192.168.1.100
+.venv-camera/bin/python streaming/movenet_test.py --server 192.168.31.248
 ```
 
 整合入口預設 `/dev/video2`（對齊你提供的原始程式）、640×480、15 FPS。

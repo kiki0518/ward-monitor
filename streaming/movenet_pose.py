@@ -10,7 +10,7 @@ MODEL = '/opt/gopoint-apps/downloads/movenet_quant_vela.tflite'
 
 DELEGATE = '/usr/lib/libethosu_delegate.so'
 
-KEYPOINT_THRESHOLD = 0.2
+KEYPOINT_THRESHOLD = 0.15
 
 PRINT_INTERVAL = 1.0
 
@@ -22,7 +22,7 @@ POSE_HISTORY_SIZE = 7
 
 FALL_LOOKBACK_SECONDS = 0.7
 
-FALL_HIP_DROP_THRESHOLD = 0.12
+FALL_HIP_DROP_THRESHOLD = 0.08
 
 FALL_HIP_LOW_THRESHOLD = 0.7
 

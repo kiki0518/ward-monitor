@@ -46,7 +46,7 @@ export default function VideoFeed({ bedId }) {
   }, [bedId]);
 
   return (
-    <div className="relative bg-[#18332d] rounded-xl overflow-hidden aspect-video">
+    <div className="relative bg-[#18332d] rounded-xl overflow-hidden aspect-[4/3]">
       <img ref={imgRef} className="w-full h-full object-cover" alt={`${bedId} 床攝影機畫面`} />
       <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-xs">
         <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-[#91a7a0]"}`} />
