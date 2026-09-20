@@ -12,8 +12,9 @@ Ctrl+C 可以中途取消。預設 server_url 是 http://localhost:8000。
 backend 的 report_event() 有去重機制（同一床同一種 state 只要還沒 resolve，
 重複回報只會更新既有那筆的 last_seen_at，started_at 不變）。但這樣拿來 demo
 會出現「明明剛剛才觸發，畫面卻顯示是幾分鐘前發生」的問題（前端顯示的時間是
-started_at）。所以這支腳本觸發前會先自己呼叫 resolve 清掉 101 床任何還在
-active 的長時間坐姿事件，確保每次執行都是全新的一筆、時間戳記一定是剛剛。
+started_at）。所以這支腳本觸發前會先自己呼叫 resolve 清掉 101 床所有還在
+active 的事件（不分 state），確保每次執行 101 身上都只有這一筆全新的事件、
+時間戳記一定是剛剛。
 
 `--debug`：板子/攝影機不在或還沒接上時測試用，最多等 5 秒，時間到了不管有沒有
 真的偵測到都直接觸發，方便單獨測 backend 這條事件流程。
@@ -27,20 +28,18 @@ import requests
 from websockets.sync.client import connect
 
 BED_ID = "101"
-STATE = "prolonged_sitting"
 DEBUG_TIMEOUT_SECONDS = 5.0
 
 
 def clear_stale_event(server_url: str) -> None:
-    """觸發前先 resolve 掉 101 床任何還 active 的長時間坐姿事件，讓這次一定是全新的一筆。"""
+    """觸發前先 resolve 掉 101 床所有還 active 的事件（不分 state），讓這次一定是
+    這個人身上唯一、全新的一筆，不會跟之前殘留的其他事件疊在一起。"""
     try:
         events = requests.get(f"{server_url}/api/beds/{BED_ID}/events").json()
     except requests.RequestException as exc:
         print(f"查詢舊事件失敗，跳過清除：{exc}")
         return
     for event in events:
-        if event["state"] != STATE:
-            continue
         try:
             requests.post(
                 f"{server_url}/api/events/{event['event_id']}/resolve",
