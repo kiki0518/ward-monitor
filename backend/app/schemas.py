@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool, AwareDatetime, model_validator
 
 Priority = Literal["green", "yellow", "red"]
 Gender = Literal["male", "female"]
@@ -103,6 +103,7 @@ class RoomDetailUpdate(BaseModel):
     active_events: List[WardAgentOutput]
     current_posture: Optional[Posture] = None
     in_camera: Optional[bool] = None
+    location: Optional[EventLocation] = None
 
 
 class BoardPostureUpdate(BaseModel):
@@ -113,9 +114,15 @@ class BoardPostureUpdate(BaseModel):
     """
 
     bed_id: str
-    ts: datetime
-    in_camera: bool
+    ts: AwareDatetime
+    in_camera: StrictBool
     current_posture: Optional[Posture] = None
+
+    @model_validator(mode="after")
+    def validate_presence(self):
+        if not self.in_camera and self.current_posture is not None:
+            raise ValueError("No posture is allowed when in_camera is false")
+        return self
 
 
 class ResolveReportRequest(BaseModel):
@@ -143,4 +150,4 @@ class PossibleFallReport(BaseModel):
     Board 已經自己判斷完「這是疑似跌倒」，backend 不重新驗證，收到就建立/更新事件。
     """
 
-    ts: datetime
+    ts: AwareDatetime

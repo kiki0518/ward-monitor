@@ -39,7 +39,7 @@ Backend 只提供 API，不再提供 `/camera` HTML 頁；前端需自行接收 
 ## 板子：確認 MJPEG 與依賴
 
 需 Python 3.9+、GStreamer 1.x、Python GI（PyGObject）、Gst introspection、
-`v4l2src`、`appsink`、websockets 14～15。Ubuntu / Debian 範例：
+`v4l2src`、`appsink`、websockets 15。Ubuntu / Debian 範例：
 
 ```bash
 sudo apt-get install python3-gi python3-venv gir1.2-gstreamer-1.0 \
@@ -89,7 +89,7 @@ test 模式才使用 `videotestsrc ! jpegenc` 產生 JPEG 動畫；實際 camera
 從專案根目錄啟動：
 
 ```bash
-python3 streaming/movenet_test.py --server 192.168.1.100
+.venv-camera/bin/python streaming/movenet_test.py --server 192.168.31.248
 ```
 
 整合入口預設 `/dev/video2`（對齊你提供的原始程式）、640×480、15 FPS。
@@ -120,14 +120,21 @@ C270 /dev/video2 → image/jpeg → tee
 啟動後應看到模型資訊、`MoveNet branch started`，以及 `Connected. Viewer API: ...`。
 即使 server 尚未啟動，也會先在板子終端看到推論輸出。
 
-保留提供程式的 17 點座標、信心閾值 0.20、身體中心正規化、站／坐／躺／舉手判斷，
-以及最近 5 次推論的多數決平滑（忽略 unknown）。也保留原本 uint8 / int8 / float32
-輸入處理和輸出反量化。`movenet_pose.py` 負責這些邏輯，不再呼叫 `cv2.VideoCapture`。
-推論縮放方式沿用原程式，未另外引入 letterbox 或調整分類閾值。
+辨識規則已更新為 `movenet_with_fall_with_unknown.py`：保留 17 點、0.20 信心閾值、
+原始量化處理、七次多數決、非人形連續 2 秒後 unknown，以及髖部快速下降後
+連續三幀低位確認的跌倒判斷（保留 3 秒）。不另開 VideoCapture 或 GUI，也不自動保存影像／關鍵點歷史。
 
-姿勢結果仍印在板子終端，server 透過 `/ws/camera/view` 提供未疊圖影像；本次未新增姿勢 JSON 上傳或骨架疊圖。
-兩路各自丟掉舊圖，因此不保證每張傳輸影像都有同一張的推論結果。
-之後若要在網頁疊骨架，需再加入 frame ID / timestamp 同步協定。
+每次推論結果透過獨立背景執行緒送到 `/ws/room/101?role=board`；不等待 ACK。
+`standing`、`sitting`、`lying` 使用平滑結果，unknown 傳 `null`。
+`in_camera` 依是否至少一個關鍵點達信心閾值判定；沒人時姿勢一律為 `null`。
+跌倒與姿勢分開：不把 `fall` 寫進姿勢欄位，而由另一背景執行緒
+POST `/api/beds/101/possible-fall`，body 帶 UTC `ts`。跌倒維持期間持續回報，由後端去重。
+
+三條網路通道各自重連。姿勢僅保留最新一筆；跌倒保留一筆待送事件，失敗每 2 秒重試，
+後續正常姿勢不會清掉尚未送出的跌倒。這些緩衝只存於記憶體，程式重啟後不保留。
+`--pose-print-interval` 只限制終端輸出，不限制上傳頻率。
+兩路各自丟棄舊圖，因此推論結果與觀看畫面不保證逐幀對齊；觀看影像仍是原始 JPEG。
+詳細資料格式見 [`BOARD_API_SPEC.md`](../BOARD_API_SPEC.md)。
 
 模型／delegate 載入失敗會在開鏡頭前退出。執行途中推論出錯會印出 `MoveNet stopped`，
 監看繼續；重啟整合程式可恢復推論。Ctrl+C 會停止 pipeline 並通知推論執行緒退出；
@@ -136,7 +143,7 @@ C270 /dev/video2 → image/jpeg → tee
 
 ### 整合驗收
 
-1. 終端持續出現 Raw / Stable / Base pose、舉手狀態與關鍵點；觀看 client 同時收到原始 JPEG。
+1. 終端持續出現 Raw / Stable / Base pose、跌倒與 unknown 狀態；觀看 client 同時收到原始 JPEG。
 2. 停止 server：板子應持續推論並重試串流；重新啟動 server 後恢復監看。
 3. 確认沒有第二個 VideoCapture 程式占用鏡頭，畫面延遲不隨時間累積。
 4. Ctrl+C 停止後，再次啟動可重新取得 camera。
@@ -309,7 +316,7 @@ view 端的 binary request 不在協定內；目前 handler 使用 `receive_text
 
 ### 最小 client 範例
 
-Python 發布一張既有 JPEG，驗證 handshake 與 ACK（需 websockets 14～15）：
+Python 發布一張既有 JPEG，驗證 handshake 與 ACK（需 websockets 15）：
 
 ```python
 from pathlib import Path
@@ -364,8 +371,8 @@ Server 在單一 process 記憶體保留最新 JPEG、接收時間與遞增序�
 不會放在訊息內。重啟 server 會清空狀態，所以部署必須使用單一 worker。
 不同觀看端可以收到不同影像，協定不保證每張都送達所有觀看者。
 
-目前沒有多 camera／房間路由、歷史影像、錄影下載、影像 metadata、Pose JSON、骨架疊圖或認證 API。
-MoveNet 推論結果仍只在板子終端輸出。若要同步骨架與畫面，需另增 frame ID／timestamp 與資料協定，
+目前沒有多 camera／影像房間路由、歷史影像、錄影下載、影像 metadata、骨架疊圖或認證 API。
+姿勢 JSON 走獨立 board WebSocket。若要同步骨架與畫面，需另增 frame ID／timestamp 與資料協定，
 不能把姿勢 JSON 混送到現有 publish 端點。
 
 ## 驗收與排錯
@@ -391,3 +398,8 @@ PYTHONPATH=backend python3 -m unittest discover -s backend/tests -v
 
 參考：[GStreamer appsink](https://gstreamer.freedesktop.org/documentation/app/appsink.html)、
 [WebSocket Python client](https://websockets.readthedocs.io/en/stable/reference/sync/client.html)。
+
+`unknown` 仍以 `current_posture: null` 上傳，後端將它判為 `out_of_bed`（離床），
+即使 `in_camera: true` 也一樣。保留原程式連續 2 秒非人形才進入 unknown 的規則。
+房間狀態 WebSocket 新增 `location` 欄位，前端顯示「目前位置：離床」；
+尚未收到板子資料時 `location: null`，顯示「等待辨識」。真實廁所訊號仍優先，101 不使用隨機廁所訊號。

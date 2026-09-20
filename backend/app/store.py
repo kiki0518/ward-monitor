@@ -208,6 +208,7 @@ def get_location(bed_id: str) -> EventLocation:
     廁所 sensor 優先：patient 進廁所後鏡頭通常照不到（隱私），posture 這時大概率是
     None/不是 lying，用廁所 sensor 蓋過去才對。躺著視為在床上；其餘（站/坐/沒在
     鏡頭裡/廁所 sensor 沒觸發）一律算離床。
+    Board 的 unknown 傳為 None，也算離床；in_camera=True 不代表在床上。
     """
     if get_in_bathroom(bed_id):
         return "bathroom"
@@ -237,6 +238,7 @@ def report_event(
     reason: str,
     location: EventLocation,
     action: Optional[str] = None,
+    ts: Optional[datetime] = None,
 ) -> WardAgentOutput:
     """回報一次偵測結果。
 
@@ -245,7 +247,7 @@ def report_event(
     event_id；started_at 保持第一次偵測到的時間不變。location 不算在去重
     key 裡，因為同一件事發展過程中 location 本來就可能改變。
     """
-    now = datetime.now(timezone.utc)
+    now = ts if ts is not None else datetime.now(timezone.utc)
     for event in _events.get(bed_id, []):
         if event.state == state and event.resolved_at is None:
             event.priority = priority

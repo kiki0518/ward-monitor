@@ -7,7 +7,7 @@
 單獨測試「開發板 camera → server → 瀏覽器」請看 [streaming/README.md](streaming/README.md)。
 直接轉送 camera 輸出的 MJPEG，透過 WebSocket 傳至 FastAPI；觀看 API 為 `ws://SERVER_IP:8000/ws/camera/view`。
 不需 H.264 編碼器、MediaMTX 或 React。請依 streaming 文件用單一 worker 啟動 backend。
-若要同時跑 MoveNet，使用 `python3 streaming/movenet_test.py --server SERVER_IP`；
+若要同時跑 MoveNet，使用 `.venv-camera/bin/python streaming/movenet_test.py --server 192.168.31.248`；
 預設 `/dev/video2`，同一鏡頭分成原始 JPEG 串流和板子姿勢推論兩路。
 
 ### 開啟開發板相機
@@ -17,7 +17,7 @@
 `10.28.50.69`，開發板就使用 `--server 10.28.50.69`。
 
 ```bash
-~/.venv-camera/bin/python ~/streaming/movenet_test.py --server 10.28.50.69
+.venv-camera/bin/python streaming/movenet_test.py --server 192.168.31.248
 ```
 
 ### Backend

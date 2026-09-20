@@ -101,7 +101,7 @@ async def run_bathroom_jitter(interval_seconds: float = 20.0, toggle_probability
     直接呼叫 store.set_in_bathroom() 寫入真實訊號即可，REST/WebSocket 介面不用動）。"""
     while True:
         for bed in store.get_all_beds():
-            if random.random() < toggle_probability:
+            if bed.bed_id != "101" and random.random() < toggle_probability:
                 store.set_in_bathroom(bed.bed_id, not store.get_in_bathroom(bed.bed_id))
         await asyncio.sleep(interval_seconds)
 
@@ -137,7 +137,7 @@ async def run_event_script(interval_seconds: float = 12.0) -> None:
     純前端行為），這樣測試時畫面上的變化才是可預期的，不會跟背景模擬互相干擾。"""
     while True:
         await asyncio.sleep(interval_seconds)
-        beds = store.get_all_beds()
+        beds = [bed for bed in store.get_all_beds() if bed.bed_id != "101"]
         if not beds:
             continue
 

@@ -5,12 +5,13 @@ import time
 
 
 class PoseWorker:
-    def __init__(self, sink, Gst, infer, report, print_interval=1.0):
+    def __init__(self, sink, Gst, infer, report, print_interval=1.0, on_result=None):
         self.sink = sink
         self.Gst = Gst
         self.infer = infer
         self.report = report
         self.print_interval = print_interval
+        self.on_result = on_result
         self.stopped = threading.Event()
         self.error = None
         self.thread = threading.Thread(target=self._run, name='movenet-pose', daemon=True)
@@ -38,6 +39,8 @@ class PoseWorker:
                 buffer = sample.get_buffer()
                 jpeg = buffer.extract_dup(0, buffer.get_size())
                 result = self.infer(jpeg)
+                if self.on_result is not None and not self.stopped.is_set():
+                    self.on_result(result)
                 now = time.monotonic()
                 if not self.stopped.is_set() and now - last_print >= self.print_interval:
                     self.report(result)

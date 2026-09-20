@@ -16,6 +16,7 @@ import ExportButton from "../components/ExportButton";
 import "./RoomDetail.css";
 
 const VITALS_HISTORY_LIMIT = 30;
+const POSTURE_LABEL = { standing: "站立", sitting: "坐姿", lying: "躺臥" };
 
 export default function RoomDetail() {
   const { bedId } = useParams();
@@ -28,6 +29,7 @@ function RoomDetailView({ bedId }) {
   const [patient, setPatient] = useState(null);
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
+  const [postureStatus, setPostureStatus] = useState("等待辨識");
   const { dismissedIds, dismissEvent } = useDismissedEvents();
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
@@ -50,8 +52,18 @@ function RoomDetailView({ bedId }) {
       (state) => {
         setVitalsHistory((prev) => [...prev, state.vitals].slice(-VITALS_HISTORY_LIMIT));
         setActiveEvents(state.active_events);
+        // in_camera remains null until the backend accepts a board update.
+        // Read posture directly; location merges standing and sitting into out_of_bed.
+        setPostureStatus(
+          state.in_camera == null
+            ? "等待辨識"
+            : state.in_camera === false
+              ? "離床"
+              : POSTURE_LABEL[state.current_posture] ?? "離床",
+        );
       },
       () => {},
+      () => setPostureStatus("連線中斷，請重新整理"),
     );
 
     return () => socket.close();
@@ -93,6 +105,9 @@ function RoomDetailView({ bedId }) {
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <VideoFeed bedId={bedId} />
+            <p className="mt-3 text-sm text-[#18332d]" role="status">
+              目前狀態：{postureStatus}
+            </p>
           </div>
           <section className="bg-white rounded-2xl border border-[#d7e2dc] shadow-[0_4px_20px_rgba(24,51,45,0.08)] p-6">
             <h2 className="text-base font-semibold text-[#18332d] mb-4">處理紀錄</h2>

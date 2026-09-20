@@ -311,3 +311,11 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 - MoveNet 姿勢分類結果目前仍只輸出在板子終端，尚未透過 `/ws/room/{bed_id}?role=board` 或 `/api/beds/{bed_id}/possible-fall` 上傳給 backend（見 [`BOARD_API_SPEC.md`](./BOARD_API_SPEC.md)）。
 - `frontend/src/components/VideoFeed.jsx`：已改接 `/ws/camera/view` 顯示 JPEG。
 - `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接。
+
+
+### 板子整合補充
+
+`RoomDetailUpdate` 新增 `location: EventLocation | null`：收到板子資料後，
+`current_posture: null`（unknown 或沒有人）對應 `out_of_bed`，前端顯示「離床」。
+尚未收到板子資料時 location 為 null。真實廁所訊號優先；101 不參與模擬廁所及隨機事件。
+姿勢不接受 fall；新版 MoveNet 的跌倒判斷走 possible-fall POST，事件時間使用板子 ts。
