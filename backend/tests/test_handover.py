@@ -27,7 +27,8 @@ class HandoverTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(handover.router)
         self.client = TestClient(app)
-        self.event = store.get_active_events('103')[0]
+        self.event = store.report_event('103', state='possible_fall', priority='red',
+                                        reason='疑似跌倒', location='out_of_bed', action='請護理師查看')
         store.resolve_event(self.event.event_id, completed_actions='協助回床', follow_up='持續觀察', notes='家屬已知悉')
         self.request = {'handover_date': '2026-09-20', 'shift': 'night', 'source_event_ids': [self.event.event_id]}
         self.content = {'completed_actions': '已協助回床', 'follow_up': '需持續觀察', 'notes': '已通知家屬'}

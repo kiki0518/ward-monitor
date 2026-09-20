@@ -136,7 +136,8 @@ def get_case_reports() -> list[CaseReport]:
 
 
 def seed_demo_data() -> None:
-    """Demo 用假資料：床位名冊從 beds.csv 讀入，103 有一筆尚未處理的疑似跌倒事件當劇本。"""
+    """Demo 用假資料：床位名冊從 beds.csv 讀入，一開始沒有任何事件（1 樓展示床要保持乾淨，
+    等 demo 腳本/板子真的觸發才會有事件；其他樓層等背景模擬跑起來自然會冒出）。"""
     _beds.clear()
     _vitals.clear()
     _postures.clear()
@@ -166,15 +167,6 @@ def seed_demo_data() -> None:
             spo2=97,
             ts=now,
         )
-
-    report_event(
-        "103",
-        state="possible_fall",
-        priority="red",
-        reason="疑似跌倒",
-        location="out_of_bed",
-        action="請護理師查看",
-    )
 
 
 def get_all_beds() -> list[BedInfo]:

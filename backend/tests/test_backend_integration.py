@@ -38,6 +38,8 @@ class BackendIntegrationTests(unittest.TestCase):
                 self.assertEqual(state['type'], 'state')
                 self.assertEqual(state['bed_id'], '103')
                 self.assertEqual(state['vitals']['bed_id'], '103')
+                # Beds start with no seeded events; create one to exercise resolve() below.
+                client.post('/api/beds/103/demo-event', json={'scenario': 'empty_bed'})
                 event = client.get('/api/beds/103/events').json()[0]
                 self.assertIsNone(event['resolved_at'])
                 report = {'completed_actions': 'checked on patient', 'follow_up': 'monitor', 'notes': ''}

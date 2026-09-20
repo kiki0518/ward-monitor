@@ -57,16 +57,21 @@ Backend 啟動後（預設 http://127.0.0.1:8000 ），對應 `API_CONTRACT.md` 
 瀏覽器打開 http://127.0.0.1:8000/docs ，FastAPI 會自動列出 `GET /api/beds`、`POST /api/events/{event_id}/resolve` 這兩支 REST endpoint，可以直接在網頁上「Try it out」測試（WebSocket 不會出現在這裡，見下方第 3 點）。
 
 **2. curl 兩支 REST endpoint**
+
+Backend 剛啟動時所有床位都是乾淨的（沒有 seed 任何事件），要先手動造一筆才能測 resolve：
+
 ```bash
 curl http://127.0.0.1:8000/api/beds
 curl -i -X POST http://127.0.0.1:8000/api/events/nope/resolve   # 查不存在的 event_id，應該回 404
-curl http://127.0.0.1:8000/api/beds/103/events  # 先取得目前 active event_id
-# 再 POST /api/events/<實際 event_id>/resolve
+curl -X POST http://127.0.0.1:8000/api/beds/103/demo-event \
+  -H "Content-Type: application/json" -d '{"scenario": "empty_bed"}'  # 手動造一筆事件方便測試
+curl http://127.0.0.1:8000/api/beds/103/events  # 取得剛剛那筆的 event_id
+# 再 POST /api/events/<實際 event_id>/resolve，body 附 {"completed_actions": "...", "follow_up": "..."}
 ```
-預期結果（依 demo seed 資料，見 `backend/app/store.py`）：
+預期結果：
 - `/api/beds` 回傳 `backend/app/data/beds.csv` 內的床位
 - 查不存在的 `event_id` 回 `404`
-- 對查到的事件 ID 第一次呼叫 resolve 會成功，回傳的物件裡 `resolved_at` 從 `null` 變成有時間戳記
+- 手動造的那筆事件會出現在 `/api/beds/103/events`，第一次呼叫 resolve 會成功，回傳的物件裡 `resolved_at` 從 `null` 變成有時間戳記
 
 **3. WebSocket 用終端機測（curl 測不了）**
 
@@ -84,7 +89,7 @@ async def main():
 asyncio.run(main())
 "
 ```
-預期每 2 秒印一次全床位的 `OverviewUpdate` 陣列，總共印 3 次然後結束。`103` 的 `priority` 應該是 `"red"`（除非已經被上面第 2 點 resolve 掉，那就會變回 `"green"`）。
+預期每 2 秒印一次全床位的 `OverviewUpdate` 陣列，總共印 3 次然後結束。如果上面第 2 點的事件還沒 resolve，`103` 的 `priority` 應該是 `"yellow"`；resolve 掉之後會變回 `"green"`。
 
 把 `ws/overview` 換成 `ws/room/103` 就可以測單一床位那條，預期印出 `{type: "state", vitals: {...}, active_events: [...]}`。接不存在的床位（例如 `ws/room/nope`）應該直接被拒絕連線（`websockets.connect` 會丟出例外）。
 
