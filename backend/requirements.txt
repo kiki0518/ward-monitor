@@ -4,3 +4,4 @@ websockets
 pydantic
 paho-mqtt
 fpdf2
+requests

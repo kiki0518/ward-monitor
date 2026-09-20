@@ -7,6 +7,7 @@
 #   GET  /api/beds/{bed_id}/events      -> 該床目前 active 事件（不含已 resolved），priority 高到低排序
 #   GET  /api/beds/{bed_id}/events/history -> 該床已處理事件紀錄，resolved_at 新到舊（寫進 event_history.json，重啟即清空）
 #   POST /api/beds/{bed_id}/possible-fall -> Board 端回報疑似跌倒，backend 不重新驗證，直接建立/更新事件
+#   POST /api/beds/{bed_id}/demo-event  -> demo 專用手動觸發（empty_bed/long_sitting），見 backend/scripts/trigger_*.py
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理，body 附病例紀錄（idempotent，寫進 case_reports.json）
 #   GET  /api/reports/export            -> 把 case_reports.json 整理成 PDF 下載，成功後清空 case_reports.json（摘要目前是假資料，待接 LLM）
 #
@@ -30,11 +31,21 @@ from app.camera_stream import router as camera_router
 from app.schemas import (
     BedInfo,
     BoardPostureUpdate,
+    DemoEventTrigger,
     PossibleFallReport,
     ResolveReportRequest,
     RoomDetailUpdate,
     WardAgentOutput,
 )
+
+# demo 專用手動觸發開關（見 backend/scripts/trigger_*.py），不是真實裝置會呼叫的 API，
+# 疑似跌倒不在這裡——直接重用 POST /api/beds/{bed_id}/possible-fall。
+_DEMO_SCENARIOS = {
+    "empty_bed": dict(state="bed_exit", priority="yellow", reason="離床超過半小時", location="out_of_bed"),
+    "long_sitting": dict(
+        state="prolonged_sitting", priority="yellow", reason="長時間維持坐姿", location="chair"
+    ),
+}
 
 
 @asynccontextmanager
@@ -63,15 +74,11 @@ app.include_router(camera_router)
 
 app.add_middleware(
     CORSMiddleware,
-<<<<<<< Updated upstream
     # 用 regex 而不是寫死 port：Vite dev server 常因為 port 被佔用換 port（5173/5174/...），
-    # 寫死單一 port 每次都要手動改，改用 regex 涵蓋 localhost/127.0.0.1/10.28.50.x 的任何 port。
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\.28\.50\.\d{1,3}):\d+",
-=======
-    # 用 regex 涵蓋常見區網 IP 段（192.168.x.x / 10.x.x.x / 172.16-31.x.x）+ localhost，
-    # 這樣現場筆電換一次 IP 也不用回來改 CORS 設定，只要前端跟後端還在同一個區網就會通。
+    # 寫死單一 port 每次都要手動改。同時涵蓋常見區網 IP 段（192.168.x.x / 10.x.x.x，含
+    # 10.28.50.x / 172.16-31.x.x）+ localhost，現場筆電換一次 IP 也不用回來改 CORS 設定，
+    # 只要前端跟後端還在同一個區網就會通。
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$",
->>>>>>> Stashed changes
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -119,6 +126,13 @@ def report_possible_fall(bed_id: str, report: PossibleFallReport):
         location="out_of_bed",
         action="請護理師查看",
     )
+
+
+@app.post("/api/beds/{bed_id}/demo-event", response_model=WardAgentOutput)
+def trigger_demo_event(bed_id: str, trigger: DemoEventTrigger):
+    if not store.bed_exists(bed_id):
+        raise HTTPException(status_code=404, detail="Bed not found")
+    return store.report_event(bed_id, action="請護理師查看", **_DEMO_SCENARIOS[trigger.scenario])
 
 
 @app.post("/api/events/{event_id}/resolve", response_model=WardAgentOutput)

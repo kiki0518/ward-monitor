@@ -39,6 +39,16 @@ from app.schemas import (
 # 其他床由 simulator.run_posture_jitter 產生假資料，兩者不會互相覆蓋。
 REAL_BOARD_BED_ID = "101"
 
+# 1 樓（101~124）是精心佈置的展示樓層：不跑任何隨機模擬任務（姿勢/廁所/事件亂數劇本），
+# 只能靠手動觸發（possible-fall / demo-event）或真的板子（101）產生資料，demo 現場才不會
+# 冒出計畫外的事件打亂節奏。2 樓以上維持完全隨機，當作 Overview 頁面的背景氣氛。
+_DEMO_FLOOR_PREFIX = "1"
+
+
+def is_demo_floor_bed(bed_id: str) -> bool:
+    return bed_id.startswith(_DEMO_FLOOR_PREFIX)
+
+
 _PRIORITY_RANK = {"green": 0, "yellow": 1, "red": 2}
 _GENDER_FROM_CSV = {"男": "male", "女": "female"}
 _BEDS_CSV_PATH = Path(__file__).parent / "data" / "beds.csv"

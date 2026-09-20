@@ -152,3 +152,17 @@ class PossibleFallReport(BaseModel):
     """
 
     ts: AwareDatetime
+
+
+DemoScenario = Literal["empty_bed", "long_sitting"]
+
+
+class DemoEventTrigger(BaseModel):
+    """POST /api/beds/{bed_id}/demo-event 的 request body。
+
+    純粹是 demo 用的手動觸發開關（見 backend/scripts/trigger_*.py），不是任何真實裝置
+    會呼叫的 API，也不在 BOARD_API_SPEC.md 的範圍內——疑似跌倒的展示直接重用
+    POST /api/beds/{bed_id}/possible-fall 即可，不用另外做一個。
+    """
+
+    scenario: DemoScenario

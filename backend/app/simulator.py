@@ -52,13 +52,13 @@ async def run_vitals_jitter(interval_seconds: float = 2.0) -> None:
 
 
 async def run_posture_jitter(interval_seconds: float = 15.0, change_probability: float = 0.3) -> None:
-    """Mock 姿勢/in_camera：demo 用，模擬除了真實板子那床以外的病患姿勢偶爾改變、偶爾
-    整個人離開鏡頭範圍。真實板子那床（store.REAL_BOARD_BED_ID）完全不會被這個任務動到，
-    它的 current_posture/in_camera 只能來自 /ws/room/{bed_id}?role=board 的真實資料，
-    不然假資料跟真資料會互相搶著寫、板子傳的東西馬上被蓋掉。"""
+    """Mock 姿勢/in_camera：demo 用，模擬病患姿勢偶爾改變、偶爾整個人離開鏡頭範圍。
+    1 樓展示樓層（store.is_demo_floor_bed）完全不會被這個任務動到：101 的
+    current_posture/in_camera 只能來自 /ws/room/{bed_id}?role=board 的真實資料，
+    102/103 等其他 1 樓床是手動觸發的展示床，兩種都不該被隨機亂數蓋掉。"""
     while True:
         for bed in store.get_all_beds():
-            if bed.bed_id == store.REAL_BOARD_BED_ID:
+            if store.is_demo_floor_bed(bed.bed_id):
                 continue
             if random.random() < change_probability:
                 if random.random() < 0.15:
@@ -73,9 +73,13 @@ async def run_posture_jitter(interval_seconds: float = 15.0, change_probability:
 
 async def run_vitals_alerting(interval_seconds: float = 2.0) -> None:
     """依 NEWS2 改編門檻（見 app/vitals_scoring.py）持續評估每床目前的 vitals：
-    數值異常就開新的/更新既有的 abnormal_vitals 事件，恢復正常就自動解除。"""
+    數值異常就開新的/更新既有的 abnormal_vitals 事件，恢復正常就自動解除。
+    1 樓展示樓層排除在外——vitals 數字還是會跳（run_vitals_jitter 不受影響，畫面才不會
+    看起來死掉），但不會因為亂數剛好跳過門檻就冒出計畫外的事件打亂 demo 節奏。"""
     while True:
         for bed in store.get_all_beds():
+            if store.is_demo_floor_bed(bed.bed_id):
+                continue
             vitals = store.get_vitals(bed.bed_id)
             if vitals is None:
                 continue
@@ -98,20 +102,26 @@ async def run_vitals_alerting(interval_seconds: float = 2.0) -> None:
 
 async def run_bathroom_jitter(interval_seconds: float = 20.0, toggle_probability: float = 0.1) -> None:
     """Mock 廁所 sensor：demo 用，模擬病患偶爾進出廁所（真的感測器接上後這個任務就不用了，
-    直接呼叫 store.set_in_bathroom() 寫入真實訊號即可，REST/WebSocket 介面不用動）。"""
+    直接呼叫 store.set_in_bathroom() 寫入真實訊號即可，REST/WebSocket 介面不用動）。
+    1 樓展示樓層排除在外，理由同 run_posture_jitter。"""
     while True:
         for bed in store.get_all_beds():
-            if bed.bed_id != "101" and random.random() < toggle_probability:
+            if store.is_demo_floor_bed(bed.bed_id):
+                continue
+            if random.random() < toggle_probability:
                 store.set_in_bathroom(bed.bed_id, not store.get_in_bathroom(bed.bed_id))
         await asyncio.sleep(interval_seconds)
 
 
 async def run_location_alerting(interval_seconds: float = 5.0) -> None:
     """持續評估每床目前離床/如廁多久（見 app/location_rules.py 的門檻）：
-    超過門檻就開新的/更新既有的事件，回到床上／離開廁所就自動解除。"""
+    超過門檻就開新的/更新既有的事件，回到床上／離開廁所就自動解除。
+    1 樓展示樓層排除在外，理由同 run_posture_jitter。"""
     tracked_states = {"night_wandering", "prolonged_bathroom"}
     while True:
         for bed in store.get_all_beds():
+            if store.is_demo_floor_bed(bed.bed_id):
+                continue
             location = store.get_location(bed.bed_id)
             duration = store.get_location_duration(bed.bed_id)
             alert = evaluate_location(location, duration)
@@ -134,10 +144,12 @@ async def run_location_alerting(interval_seconds: float = 5.0) -> None:
 async def run_event_script(interval_seconds: float = 12.0) -> None:
     """每隔一段時間，隨機讓某床冒出一個新事件。
     不會自動解決事件——事件唯一消失的方式是護理站在前端手動「標記已處理」（或「誤觸」，
-    純前端行為），這樣測試時畫面上的變化才是可預期的，不會跟背景模擬互相干擾。"""
+    純前端行為），這樣測試時畫面上的變化才是可預期的，不會跟背景模擬互相干擾。
+    1 樓展示樓層排除在外，理由同 run_posture_jitter：101/102/103 的事件要嘛來自真的板子，
+    要嘛用 scripts/trigger_*.py 手動觸發，104~124 則是刻意維持乾淨、永遠綠燈的對照組。"""
     while True:
         await asyncio.sleep(interval_seconds)
-        beds = [bed for bed in store.get_all_beds() if bed.bed_id != "101"]
+        beds = [b for b in store.get_all_beds() if not store.is_demo_floor_bed(b.bed_id)]
         if not beds:
             continue
 

@@ -90,3 +90,25 @@ asyncio.run(main())
 **4. 看 terminal 有沒有錯誤**
 
 `--reload` 模式下，任何一支 endpoint 出錯都會在啟動 uvicorn 的 terminal 印出完整 traceback，照著 traceback 最後幾行找出是哪個檔案哪一行壞的。
+
+## Demo 手動觸發事件
+
+1 樓（101~124）是刻意排除在隨機模擬之外的展示樓層，只有 101/102/103 這三床會有事件，而且都要手動觸發，不會自己跳出來（其他樓層維持完全隨機，當 Overview 頁面的背景氣氛）。
+
+先確認 backend 有在跑，再開一個 terminal：
+
+```bash
+cd backend && source .venv/bin/activate
+
+python scripts/trigger_fall.py          # 101 床：疑似跌倒
+python scripts/trigger_empty_bed.py     # 102 床：空床（離床超過半小時）
+python scripts/trigger_long_sitting.py  # 103 床：長時間維持坐姿
+```
+
+每支跑完會印出「觸發成功：XXX 床 XXX」跟完整的事件 JSON，前端馬上就能在 Overview／RoomDetail 看到。重複執行同一支不會開出重複事件（backend 有去重機制，只會更新時間戳記），demo 練習時手滑多按沒關係。這三個事件不會自動消失，要在前端 RoomDetail 頁面點「標記已處理」才會清掉。
+
+如果 server 不是跑在 `localhost:8000`，三支都接受一個可選參數，例如：
+
+```bash
+python scripts/trigger_fall.py http://192.168.1.100:8000
+```
