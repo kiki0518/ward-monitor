@@ -118,6 +118,21 @@ class HandoverTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/beds/103/handovers').json(), [])
         self.assertEqual(len(self.client.get('/api/beds/103/handover-sources').json()), 1)
 
+    def test_legacy_bed_only_records_are_migrated_once_and_backed_up(self):
+        path = store._CASE_REPORTS_JSON_PATH
+        old = json.loads(path.read_text())
+        for row in old:
+            row.pop('patient_name', None)
+        original = json.dumps(old, ensure_ascii=False)
+        path.write_text(original)
+        sources = self.client.get('/api/beds/103/handover-sources').json()
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]['completed_actions'], '協助回床')
+        self.assertEqual(sources[0]['patient_name'], store._beds['103'].patient_name)
+        self.assertEqual(path.with_suffix('.legacy-backup.json').read_text(), original)
+        store._beds['103'].patient_name = '另一位病人'
+        self.assertEqual(self.client.get('/api/beds/103/handover-sources').json(), [])
+
     def test_unconfigured_model_does_not_create_fake_summary(self):
         with patch.dict(os.environ, {'TAIDE_API_BASE': '', 'TAIDE_MODEL': ''}):
             self.assertEqual(self.client.post('/api/beds/103/handover-drafts', json=self.request).status_code, 503)

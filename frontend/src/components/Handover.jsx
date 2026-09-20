@@ -89,17 +89,21 @@ function Editor({ bedId, onClose, onSaved }) {
       <h2 id="handover-title">{draft ? "編輯交班紀錄" : "產生交班紀錄"}</h2>
       <p>{draft ? "請確認並修改 AI 整理的內容，按送出後儲存。" : "選擇要整理的處理紀錄，預設勾選尚未交班的紀錄。"}</p>
       <fieldset disabled={busy}>
-        <label>病人<select value={selectedBed} disabled={Boolean(bedId) || Boolean(draft)} required onChange={event => { setSelectedBed(event.target.value); setSources([]); setSelected([]); setLoading(Boolean(event.target.value)); setError(""); }}>
-          <option value="">請選擇病人</option>
-          {beds.map(bed => <option key={bed.bed_id} value={bed.bed_id}>{bed.bed_id} 床・{bed.patient_name}</option>)}
-        </select></label>
+        <label>病人{bedId || draft ? (
+          <input readOnly value={`${selectedBed} 床${(draft?.patient_name || beds.find(bed => bed.bed_id === selectedBed)?.patient_name) ? `・${draft?.patient_name || beds.find(bed => bed.bed_id === selectedBed)?.patient_name}` : ""}`} />
+        ) : (
+          <select value={selectedBed} required onChange={event => { setSelectedBed(event.target.value); setSources([]); setSelected([]); setLoading(Boolean(event.target.value)); setError(""); }}>
+            <option value="">請選擇病人</option>
+            {beds.map(bed => <option key={bed.bed_id} value={bed.bed_id}>{bed.bed_id} 床・{bed.patient_name}</option>)}
+          </select>
+        )}</label>
         <div className="handover-date-row">
           <label>交班日期<input type="date" required value={form.handover_date} onChange={event => change("handover_date", event.target.value)} /></label>
           <label>班別<select value={form.shift} onChange={event => change("shift", event.target.value)}>{Object.entries(SHIFTS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         </div>
         {!draft && <div className="handover-sources">
           {loading && <p role="status">載入處理紀錄中…</p>}
-          {selectedBed && !loading && sources.length === 0 && <p>此病人目前沒有可整理的處理紀錄。</p>}
+          {selectedBed && !loading && !error && sources.length === 0 && <p>此病人目前沒有可整理的處理紀錄。</p>}
           {sources.map(source => <label className="handover-source" key={source.event_id}>
             <input type="checkbox" checked={selected.includes(source.event_id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, source.event_id] : previous.filter(id => id !== source.event_id))} />
             <span><strong>{new Date(source.resolved_at).toLocaleString("zh-TW")}{source.included_in_handover ? "（曾交班）" : ""}</strong>

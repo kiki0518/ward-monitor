@@ -26,7 +26,7 @@ cd backend
 
 `TAIDE_API_BASE` 必須包含 `/v1`；後端呼叫 `/chat/completions`，也能換成其他提供相同協定的 TAIDE 推論服務。金鑰使用 `TAIDE_API_KEY`，只留在後端環境。參考 [llama-server 文件](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)。
 
-未設定模型時回 503；連線逾時、截斷或無效 JSON 回 502，不產生假摘要。單次連線逾時 120 秒。輸入超過 `TAIDE_MAX_INPUT_BYTES` 時回 422，提示減少選取紀錄，不靜默截斷。預設 5000 bytes 是保守大小限制，並非精確 token 計數；context 不足仍可能由模型服務拒絕，須依模型調整。輸出預設 1024 tokens。這版不自動分段摘要。
+未設定模型時回 503；連線逾時、截斷或無效 JSON 回 502，不產生假摘要。單次連線逾時預設 300 秒，可用 `TAIDE_TIMEOUT_SECONDS` 調整。輸入超過 `TAIDE_MAX_INPUT_BYTES` 時回 422，提示減少選取紀錄，不靜默截斷。預設 5000 bytes 是保守大小限制，並非精確 token 計數；context 不足仍可能由模型服務拒絕，須依模型調整。輸出預設 1024 tokens。這版不自動分段摘要。
 
 ## Intel Mac 安裝腳本沒有預編譯版本時
 
@@ -60,7 +60,7 @@ source backend/taide.env.local
 - 日期與班別可以在編輯時修改。送出後為唯讀。
 - 只把處理時間與三個文字欄位傳給模型，不主動附姓名／床號；自由文字若含姓名仍會包含在請求中。
 - 目前名冊沒有病人／住院 ID，以床號加紀錄時的姓名隔離。換床或同床同名的不同住院尚無完整身分追蹤，正式使用前需接住院 ID。
-- 舊版紀錄沒有姓名快照，保留原檔，但不自動指派給目前住床的人，也不列入可摘要來源。
+- 舊版 demo 紀錄只有床號，首次讀取時依固定床位名冊補上姓名快照並保存，原檔另存 `.legacy-backup.json`；後續病人改名不會重新綁定。此相容遷移僅適用目前固定名冊 demo，真實住院資料須改用住院 ID。
 - 原有即時事件的模擬狀態仍在重啟時重設；人工處理文字與交班紀錄持續保存。
 - 不同草稿可重複選取來源，用於修正或重新交班；不限制同日同班只能一份。
 
@@ -77,4 +77,4 @@ npm run lint
 
 瀏覽器操作測試：先啟動 Vite，安裝 Playwright 與其 Chromium 後執行 `node frontend/tests/handover.e2e.cjs`。此測試攔截 API，使用隔離的假模型回應及暫存紀錄，涵蓋編輯、提交失敗重試、重整、取消、舊來源重選與模型未啟用。`FRONTEND_URL` 可指定病床頁網址，`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 可指定現有 Chromium。截圖輸出到系統暫存目錄。
 
-本機編譯驗證：Intel x86_64、macOS 14.3.1、AppleClang 15，官方 b11057（59657a6）已成功建立，`llama-server --version` 可正常執行。未嵌入 llama.cpp 示範網頁；本專案使用既有前端與模型 API。尚未下載模型，因此未完成真實摘要驗證。
+本機編譯驗證：Intel x86_64、macOS 14.3.1、AppleClang 15，官方 b11057（59657a6）已成功建立，`llama-server --version` 可正常執行。未嵌入 llama.cpp 示範網頁；本專案使用既有前端與模型 API。已下載模型，實際摘要驗證進行中。

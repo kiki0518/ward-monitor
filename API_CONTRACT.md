@@ -329,7 +329,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 
 錯誤：未知床位或草稿 404；來源不屬於該病人、空選取、無效班別／日期、輸入過長 422；產生期間病人改變 409；模型未設定 503；模型連線失敗、逾時、輸出截斷／格式錯誤 502。所有失敗不會清空來源，也不建立正式交班紀錄。
 
-交班資料存在 `backend/app/data/handover.sqlite3`，跨重啟保留。舊版來源缺少姓名快照，不自動歸給目前住床者。現有名冊尚無住院 ID，這版以床號和姓名隔離，換床與同床同名的住院識別需另接正式 ID。部署及限制見 [HANDOVER.md](docs/HANDOVER.md)。
+交班資料存在 `backend/app/data/handover.sqlite3`，跨重啟保留。舊版 demo 來源缺少姓名快照時，首次讀取依固定床位名冊補上並持久保存，原檔另存 `.legacy-backup.json`。現有名冊尚無住院 ID，這版以床號和姓名隔離，換床與同床同名的住院識別需另接正式 ID。部署及限制見 [HANDOVER.md](docs/HANDOVER.md)。
 
 ## 前端消費方式
 

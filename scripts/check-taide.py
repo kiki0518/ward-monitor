@@ -13,10 +13,11 @@ from fastapi import HTTPException
 base = os.environ.get('TAIDE_API_BASE', 'http://127.0.0.1:8080/v1')
 os.environ.setdefault('TAIDE_API_BASE', base)
 os.environ.setdefault('TAIDE_MODEL', 'taide-handover')
+os.environ.setdefault('TAIDE_MAX_OUTPUT_TOKENS', '512')
 try:
     with urlopen(base.rstrip('/') + '/models', timeout=10) as response:
         models = json.load(response)
-    print('模型服務已連接：' + ', '.join(item['id'] for item in models['data']))
+    print('模型服務已連接：' + ', '.join(item['id'] for item in models['data']), flush=True)
     start = time.monotonic()
     result = summarize([
         {'resolved_at': '2026-09-20T09:00:00+08:00', 'completed_actions': '已協助回床。',

@@ -23,3 +23,5 @@ backend/app/data/case_reports.tmp
 .runtime/
 models/
 backend/taide.env.local
+
+backend/app/data/case_reports.legacy-backup.json

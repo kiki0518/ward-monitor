@@ -39,6 +39,8 @@ const os = require('node:os');
     await page.goto(process.env.FRONTEND_URL || 'http://localhost:5173/room/103');
     await page.getByRole('button', { name: '產生交班紀錄' }).click();
     const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('combobox', { name: '病人', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('textbox', { name: '病人', exact: true })).toHaveAttribute('readonly', '');
     await expect(dialog.getByRole('checkbox')).toHaveCount(2);
     await expect(dialog.getByRole('checkbox').first()).toBeChecked();
     await dialog.getByLabel('交班日期').fill('2026-09-20');

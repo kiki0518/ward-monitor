@@ -19,4 +19,5 @@ if [[ "$(head -c 4 "$model_path")" != "GGUF" ]]; then
   exit 1
 fi
 exec "$server_path" -m "$model_path" --alias "${TAIDE_MODEL:-taide-handover}" \
-  --host 127.0.0.1 --port "${TAIDE_PORT:-8080}" -c 4096
+  --host 127.0.0.1 --port "${TAIDE_PORT:-8080}" -c "${TAIDE_CONTEXT_SIZE:-2048}" --parallel 1 --batch-size 128 --ubatch-size 64 \
+  --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on

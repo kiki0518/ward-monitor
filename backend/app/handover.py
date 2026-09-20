@@ -74,13 +74,13 @@ def summarize(reports):
     )
     body = json.dumps({'model': model, 'messages': [
         {'role': 'system', 'content': prompt}, {'role': 'user', 'content': source}
-    ], 'temperature': 0.1, 'max_tokens': int(os.environ.get('TAIDE_MAX_OUTPUT_TOKENS', '1024'))}).encode()
+    ], 'response_format': {'type': 'json_object', 'schema': {'type': 'object', 'properties': {key: {'type': 'string'} for key in Content.model_fields}, 'required': list(Content.model_fields), 'additionalProperties': False}}, 'temperature': 0.1, 'max_tokens': int(os.environ.get('TAIDE_MAX_OUTPUT_TOKENS', '1024'))}).encode()
     headers = {'Content-Type': 'application/json'}
     if os.environ.get('TAIDE_API_KEY'):
         headers['Authorization'] = 'Bearer ' + os.environ['TAIDE_API_KEY']
     try:
         request = Request(endpoint + '/chat/completions', data=body, headers=headers)
-        with urlopen(request, timeout=120) as response:
+        with urlopen(request, timeout=int(os.environ.get("TAIDE_TIMEOUT_SECONDS", "300"))) as response:
             result = json.load(response)
         choice = result['choices'][0]
         if choice.get('finish_reason') == 'length':

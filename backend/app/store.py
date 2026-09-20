@@ -106,7 +106,23 @@ def _append_to_case_reports_file(report: CaseReport) -> None:
 def get_case_reports() -> list[CaseReport]:
     with _case_lock:
         _init_case_reports_file()
-        return [CaseReport(**r) for r in json.loads(_CASE_REPORTS_JSON_PATH.read_text(encoding="utf-8"))]
+        original = _CASE_REPORTS_JSON_PATH.read_text(encoding="utf-8")
+        reports = [CaseReport(**r) for r in json.loads(original)]
+        changed = False
+        # Legacy demo records used bed IDs only. Bind them once to the fixed
+        # demo roster, then persist the snapshot so later renames cannot rebind them.
+        for report in reports:
+            if not report.patient_name and report.bed_id in _beds:
+                report.patient_name = _beds[report.bed_id].patient_name
+                changed = True
+        if changed:
+            backup = _CASE_REPORTS_JSON_PATH.with_suffix(".legacy-backup.json")
+            if not backup.exists():
+                backup.write_text(original, encoding="utf-8")
+            temporary = _CASE_REPORTS_JSON_PATH.with_suffix(".tmp")
+            temporary.write_text(json.dumps([r.model_dump(mode="json") for r in reports], ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(_CASE_REPORTS_JSON_PATH)
+        return reports
 
 
 def seed_demo_data() -> None:
