@@ -93,38 +93,4 @@ asyncio.run(main())
 
 ## Demo 手動觸發事件
 
-1 樓（101~124）是刻意排除在隨機模擬之外的展示樓層，只有 101/102/103 這三床會有事件，其他樓層維持完全隨機，當 Overview 頁面的背景氣氛。
-
-只有 101 有真的板子/攝影機，102、103 沒有真的感測器。三支腳本都是「先連到 101 床的即時姿勢資料（`/ws/room/101`）等偵測到指定動作，才觸發對應事件」，不是打開就馬上發，示範時要對著鏡頭實際做動作腳本才會動：
-
-| 腳本 | 對應床 | 要對著鏡頭做的動作 | 偵測條件 |
-|---|---|---|---|
-| `trigger_fall.py` | 101 疑似跌倒 | 躺下 | `in_camera=true` 且 `current_posture=="lying"` |
-| `trigger_empty_bed.py` | 102 空床 | 離開鏡頭範圍 | `in_camera=false` |
-| `trigger_long_sitting.py` | 103 長時間維持坐姿 | 坐著 | `in_camera=true` 且 `current_posture=="sitting"` |
-
-先確認 backend 有在跑、板子也連上 101 了，再開一個 terminal：
-
-```bash
-cd backend && source .venv/bin/activate
-
-python scripts/trigger_fall.py          # 等偵測到躺下 -> 觸發 101 疑似跌倒
-python scripts/trigger_empty_bed.py     # 等偵測到鏡頭前沒人 -> 觸發 102 空床
-python scripts/trigger_long_sitting.py  # 等偵測到坐著 -> 觸發 103 長時間坐姿
-```
-
-每支會先印「等待偵測：...」卡住不動，直到在鏡頭前做出對應動作才會印出「觸發成功：XXX 床 XXX」跟完整的事件 JSON，前端馬上就能在 Overview／RoomDetail 看到；等待中可以 Ctrl+C 取消。重複觸發不會開出重複事件（backend 有去重機制，只會更新時間戳記）。這些事件不會自動消失，要在前端 RoomDetail 頁面點「標記已處理」才會清掉。
-
-板子還沒連上時 `in_camera` 會一直是 `null`，三支腳本都會卡在「等待偵測」，這是預期行為。可以連 `ws/room/101` 看目前的 `in_camera`/`current_posture`（見上面「確認 Backend 是否正常運作」）確認板子有沒有連上、有沒有在送資料。
-
-板子/攝影機不在或還沒接上時，想單獨測 backend 這條事件流程，三支都加 `--debug`：最多等 5 秒，時間到了不管有沒有真的偵測到都會強制觸發（這段時間如果真的偵測到了還是會提早觸發，不會傻等滿 5 秒）：
-
-```bash
-python scripts/trigger_fall.py --debug
-```
-
-如果 server 不是跑在 `localhost:8000`，三支都接受一個可選參數，例如：
-
-```bash
-python scripts/trigger_fall.py http://192.168.1.100:8000
-```
+1 樓（101~124）是刻意排除在隨機模擬之外的展示樓層，只有 101/102/103 這三床會有事件，其他樓層維持完全隨機，當 Overview 頁面的背景氣氛。對應的手動觸發腳本在 `backend/scripts/`，用法見本機的 `DEMO.md`（demo 小抄，未進版控）。
