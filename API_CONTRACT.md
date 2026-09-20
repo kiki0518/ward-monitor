@@ -61,8 +61,11 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | WS | `/ws/camera/view` | RoomDetail 頁拉取最新 JPEG（binary），全域單一 camera |
 | GET | `/api/beds/{bed_id}/events` | 查該床目前 active 事件（不含已 resolved），見下方「事件生命週期」 |
 | GET | `/api/beds/{bed_id}/events/history` | 查該床已處理事件紀錄（`resolved_at` 不為 `null`），見下方「事件歷史」 |
-| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理，body 附一份病例紀錄，見下方「病例紀錄與匯出報告」 |
-| GET | `/api/reports/export` | 把目前累積的病例紀錄整理成 PDF 報告，直接回傳檔案下載，見下方「病例紀錄與匯出報告」 |
+| POST | `/api/events/{event_id}/resolve` | 護理站標記事件已處理，body 附一份病例紀錄，見下方「病例紀錄與交班紀錄」 |
+| GET | `/api/beds/{bed_id}/handover-sources` | 可供整理的處理紀錄，包含 `included_in_handover` |
+| POST | `/api/beds/{bed_id}/handover-drafts` | TAIDE 整理選定紀錄，產生尚未送出的交班草稿 |
+| POST | `/api/beds/{bed_id}/handover-drafts/{draft_id}/submit` | 儲存人工編輯後的交班紀錄，重送同草稿不重複新增 |
+| GET | `/api/beds/{bed_id}/handovers` | 已送出的交班紀錄，依送出時間新到舊 |
 
 ## Schema
 
@@ -161,11 +164,12 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 
 前端彈出的「標記已處理」表單對應這三個欄位；這支請求沒有這個 body 會被 FastAPI 擋下（422）。
 
-### `CaseReport`（寫進 `case_reports.json` 的一筆紀錄，`GET /api/reports/export` 用來產生 PDF）
+### `CaseReport`（寫進 `case_reports.json` 的一筆紀錄，交班草稿的來源）
 ```json
 {
   "event_id": "evt_20260919143150_a1b2",
   "bed_id": "103",
+  "patient_name": "王小明",
   "completed_actions": "協助病患回床並安撫情緒",
   "follow_up": "持續觀察生命徵象",
   "notes": "家屬在場陪同",
@@ -173,7 +177,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 }
 ```
 
-`ResolveReportRequest` 補上 `event_id`/`bed_id`/`resolved_at` 就是這個 schema，這支不是任何端點的直接回傳值，只在 `case_reports.json` 裡以陣列形式存在。
+`ResolveReportRequest` 補上 `event_id`/`bed_id`/`patient_name`/`resolved_at` 就是這個 schema。儲存在 `case_reports.json`；來源 API 回傳時另帶 `included_in_handover`。
 
 ### `Vitals`
 ```json
@@ -286,31 +290,57 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 - **儲存方式**：後端把事件寫進一個 JSON 檔案（`backend/app/data/event_history.json`，已加進 `.gitignore`），**每次後端重新啟動時初始化（清空）這個檔案**——只記錄「這次執行期間」處理過的事件，不是跨重啟的永久紀錄，重啟後歷史會歸零。跟現有 `store.py` 的 in-memory 資料一樣是 demo 用途，不是真正的資料庫。
 - **寫入時機**：`POST /api/events/{event_id}/resolve` 成功時 append 進 JSON 檔案。「誤觸」是純前端行為，不會寫進來。
 
-## 病例紀錄與匯出報告
+## 病例紀錄與交班紀錄
 
-`POST /api/events/{event_id}/resolve` 現在**必須**帶 `ResolveReportRequest` body（見上方 schema）。前端在使用者按下「標記已處理」時彈出一個表單（已完成的處理／需要下一位處理／備註），填完按「確認」才會真的打這支 API；「取消」則什麼都不送。
+`POST /api/events/{event_id}/resolve` 接收三個欄位：`completed_actions`、`follow_up`、`notes`。首次處理會保存原始病例紀錄和當時病人姓名，重送已解除事件不重複寫入。`case_reports.json` 現在跨重啟保留，不因交班清空。
 
-- **儲存**：resolve 成功（第一次，非 idempotent 重複呼叫）時，除了原本寫進 `event_history.json`，同時把 `ResolveReportRequest` 補上 `event_id`/`bed_id`/`resolved_at` 組成 `CaseReport`，append 進 `backend/app/data/case_reports.json`（已加進 `.gitignore`）。跟 `event_history.json` 一樣**每次後端重新啟動就清空**，不是永久紀錄。
-- **idempotency**：對已經 resolved 的事件再打一次 `resolve`（不論這次 body 內容是什麼），不會覆寫 `resolved_at`，也不會重複寫入 `case_reports.json`。
+舊 `GET /api/reports/export` PDF 下載已移除，改為以下流程：
 
-`GET /api/reports/export` — 把目前 `case_reports.json` 裡的所有紀錄整理成一份 PDF，直接以 `Content-Disposition: attachment` 回傳，前端收到後觸發瀏覽器下載，不分床位、不分頁面，回傳的是**全部**病例紀錄的彙整報告。
+1. `GET /api/beds/{bed_id}/handover-sources` 回傳此床目前病人的原始處理紀錄，包含 `included_in_handover`。前端預設勾選 false 的項目，可自行重選。
+2. `POST /api/beds/{bed_id}/handover-drafts` 接收：
 
-- **內容**：報告開頭有一段摘要文字，後面列出每筆病例的床號/事件 id/處理時間/三個欄位內容。
-- **摘要目前是假資料**（`backend/app/report_generator.py` 的 `_summarize()`），先用固定模板文字撐住前後端流程；之後要接 LLM，只要把這個函式換成真正呼叫 LLM API（把 `case_reports` 序列化丟進去，回傳摘要文字）即可，其他部分不用動。
-- **PDF 產生**：用 `fpdf2`（純 Python，不需要系統層級相依套件），中文字型內嵌 `backend/app/data/fonts/NotoSansTC-Regular.ttf`（Google Noto Sans TC，OFL 授權，已存進 repo）。
-- 沒有任何病例紀錄時，PDF 仍會正常產生，摘要文字會說明「本次匯出範圍內沒有已處理的病例紀錄」。
-- **匯出後會清空**：PDF 產生成功後，`case_reports.json` 會被清空（等於這批病例紀錄「已經匯出過」）。所以同一筆病例只會出現在**下一次**匯出的報告裡一次，不會被重複匯出；下次再打這支 API，範圍只會是「上次匯出之後新累積的病例」。`event_history.json`（RoomDetail 的「處理紀錄」）不受影響，不會被這支端點清空。
+```json
+{
+  "handover_date": "2026-09-20",
+  "shift": "night",
+  "source_event_ids": ["evt_20260919143150_a1b2"]
+}
+```
+
+`shift` 僅允許 `day`（白班）、`evening`（小夜班）、`night`（大夜班）。日期與班別是交班標籤，不自動決定來源範圍。來源至少 1 筆、最多 100 筆，只能選同一病人的護理處理紀錄。當前未解除警示與系統自動解除事件不混入摘要。
+
+回傳草稿包含 `id`、`bed_id`、`patient_name`、`handover_date`、`shift`、`source_event_ids`、`source_records`（原始快照）、`created_at` 和 AI 整理的三個文字欄位。生成不會新增正式交班紀錄或消耗來源紀錄。
+
+3. 前端開啟可編輯內容，使用者確認後呼叫 `POST /api/beds/{bed_id}/handover-drafts/{draft_id}/submit`：
+
+```json
+{
+  "handover_date": "2026-09-20",
+  "shift": "night",
+  "completed_actions": "人工確認後的處理內容",
+  "follow_up": "需要下一位處理的事項",
+  "notes": "備註"
+}
+```
+
+三個文字欄位每個最多 20,000 字元；前兩項去除首尾空白後不得為空，沒有事項可填「無」，備註可空白。儲存回傳資料在草稿欄位上加 `submitted_at`。同一草稿再次送出會回傳首次儲存的內容，不會重複建立或覆寫。
+
+4. `GET /api/beds/{bed_id}/handovers` 回傳已送出清單，`submitted_at` 新到舊。前端放在「處理紀錄」下方，顯示日期、班別、三個欄位與送出時間。
+
+錯誤：未知床位或草稿 404；來源不屬於該病人、空選取、無效班別／日期、輸入過長 422；產生期間病人改變 409；模型未設定 503；模型連線失敗、逾時、輸出截斷／格式錯誤 502。所有失敗不會清空來源，也不建立正式交班紀錄。
+
+交班資料存在 `backend/app/data/handover.sqlite3`，跨重啟保留。舊版來源缺少姓名快照，不自動歸給目前住床者。現有名冊尚無住院 ID，這版以床號和姓名隔離，換床與同床同名的住院識別需另接正式 ID。部署及限制見 [HANDOVER.md](docs/HANDOVER.md)。
 
 ## 前端消費方式
 
-- **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名；頁面上的「匯出」按鈕呼叫 `GET /api/reports/export` 下載 PDF。
-- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線（不用帶 `role`，預設就是 viewer）拿 vitals/events/`current_posture`；**只有 `bed_id === "101"`** 時額外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」），其他床沒有真實攝影機，不用連；`active_events` 列表每筆放「標記已處理」跟「誤觸」兩個按鈕——前者彈出表單，填完呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷，會進處理紀錄），後者純前端濾掉、不打 API（見上面「誤觸」）；影像下方的「處理紀錄」呼叫 `GET /api/beds/{bed_id}/events/history` 顯示；頁面上也有「匯出」按鈕，跟 Overview 頁一樣呼叫 `GET /api/reports/export`。
+- **Overview 頁**：載入時 `GET /api/beds` 拿名冊，之後靠 `/ws/overview` 的 `bed_id` 對應更新 priority/reason；`RoomCard` 的 `roomId`/`riskLevel` 之後改用 `bed_id`/`priority` 命名；頁面上的「產生交班紀錄」按鈕先選擇病人，再選取紀錄、產生草稿與編輯送出。
+- **RoomDetail 頁**：進頁建立 `/ws/room/{bed_id}` 連線（不用帶 `role`，預設就是 viewer）拿 vitals/events/`current_posture`；**只有 `bed_id === "101"`** 時額外開一條 `/ws/camera/view` 連線，用「送 `next` → 收一張畫面或 waiting/unchanged」的迴圈把最新 JPEG frame 畫到畫面上（見上方「攝影機串流」），其他床沒有真實攝影機，不用連；`active_events` 列表每筆放「標記已處理」跟「誤觸」兩個按鈕——前者彈出表單，填完呼叫 `POST /api/events/{event_id}/resolve`（單向操作，沒有撤銷，會進處理紀錄），後者純前端濾掉、不打 API（見上面「誤觸」）；影像下方的「處理紀錄」呼叫 `GET /api/beds/{bed_id}/events/history` 顯示；頁面上的「產生交班紀錄」按鈕固定目前病人；處理紀錄下方的交班紀錄區塊呼叫 `GET /api/beds/{bed_id}/handovers`，送出後刷新。
 
 ## 目前狀態
 
-- Backend（`schemas.py`/`store.py`/`simulator.py`/`main.py`）：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（`role=board` 上傳姿勢、`role=viewer` 推送 state+events+`current_posture`）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/beds/{bed_id}/possible-fall`、`/api/events/{event_id}/resolve`（含病例紀錄）、`/api/reports/export` 都已實作，不是骨架。`current_posture`/`vitals`/事件目前由 `simulator.py` 的背景任務產生假資料（demo 用），board 接上之後直接把假資料來源換掉即可，介面不用動。
+- Backend（`schemas.py`/`store.py`/`simulator.py`/`main.py`）：`/api/beds`、`/ws/overview`、`/ws/room/{bed_id}`（`role=board` 上傳姿勢、`role=viewer` 推送 state+events+`current_posture`）、`/api/beds/{bed_id}/events`、`/api/beds/{bed_id}/events/history`、`/api/beds/{bed_id}/possible-fall`、`/api/events/{event_id}/resolve`（含病例紀錄）與交班草稿／儲存／查詢端點都已實作，不是骨架。`current_posture`/`vitals`/事件目前由 `simulator.py` 的背景任務產生假資料（demo 用），board 接上之後直接把假資料來源換掉即可，介面不用動。
 - `backend/app/camera_stream.py`：`/ws/camera/publish`、`/ws/camera/view` 已實作並整併進同一個 FastAPI app；`GET /camera` 監看頁跟 `camera.html` 已移除，backend 只提供串流 API。板子端 GStreamer/MoveNet 程式在 `streaming/`。
-- `backend/app/report_generator.py`：PDF 產生已實作，**摘要文字是假資料**，待接 LLM（見「病例紀錄與匯出報告」）
+- `backend/app/handover.py`：TAIDE 推論服務串接、草稿與人工送出交班紀錄已實作；須設定外部模型服務，沒有假摘要降級。舊 PDF generator 不再被 API 使用。
 - MoveNet 姿勢分類結果目前仍只輸出在板子終端，尚未透過 `/ws/room/{bed_id}?role=board` 或 `/api/beds/{bed_id}/possible-fall` 上傳給 backend（見 [`BOARD_API_SPEC.md`](./BOARD_API_SPEC.md)）。
 - `frontend/src/components/VideoFeed.jsx`：已改接 `/ws/camera/view` 顯示 JPEG。
 - `Overview.jsx` / `RoomCard.jsx` 仍先用 `frontend/src/mock/rooms.js` 的假資料，等對應負責人把 TODO 補完再串接。

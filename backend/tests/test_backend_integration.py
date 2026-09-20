@@ -1,6 +1,8 @@
 """Verify ward APIs and JPEG streaming share the same application lifecycle."""
 import asyncio
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,14 @@ from app.main import app
 
 
 class BackendIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        for field, name in (("_CASE_REPORTS_JSON_PATH", "cases.json"), ("_EVENT_HISTORY_JSON_PATH", "events.json")):
+            override = patch("app.store." + field, Path(temporary.name) / name)
+            override.start()
+            self.addCleanup(override.stop)
+
     def test_camera_and_ward_apis_work_together(self):
         with TestClient(app) as client:
             self.assertEqual(client.get('/').json(), {'status': 'ok'})

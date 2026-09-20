@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import FloorPlan from "../components/FloorPlan";
 import AlertPanel from "../components/AlertPanel";
-import ExportButton from "../components/ExportButton";
+import HandoverButton from "../components/Handover";
 import { fetchBeds, fetchBedEvents, connectOverviewSocket } from "../services/ws";
 import { groupBedsByFloor } from "../config/floorLayout";
 import { useDismissedEvents } from "../context/DismissedEventsContext";
@@ -131,7 +131,7 @@ export default function Overview() {
     <div className="overview">
       <div className="overview__toolbar">
         <h1>病房總覽</h1>
-        <ExportButton />
+        <HandoverButton />
       </div>
       <div className="overview__body">
         <div className="overview__main">

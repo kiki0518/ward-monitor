@@ -139,6 +139,7 @@ class CaseReport(BaseModel):
 
     event_id: str
     bed_id: str
+    patient_name: str = ""
     completed_actions: str
     follow_up: str
     notes: str

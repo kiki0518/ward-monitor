@@ -90,3 +90,9 @@ asyncio.run(main())
 **4. 看 terminal 有沒有錯誤**
 
 `--reload` 模式下，任何一支 endpoint 出錯都會在啟動 uvicorn 的 terminal 印出完整 traceback，照著 traceback 最後幾行找出是哪個檔案哪一行壞的。
+
+## AI 交班紀錄
+
+原匯出按鈕改為「產生交班紀錄」：選取同一病人的處理紀錄、日期與班別，TAIDE 整理後可編輯「已完成的處理／需要下一位處理／備註」，按送出才儲存在處理紀錄下方。原始資料不清空，交班紀錄跨重啟保存。
+
+模型尚未部署時，摘要會提示服務未啟用。輕量 TAIDE 模型、啟動方式與限制見 [部署說明](docs/HANDOVER.md)；環境變數範本在 [backend/taide.env.example](backend/taide.env.example)。

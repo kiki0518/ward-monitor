@@ -8,7 +8,7 @@
 #   GET  /api/beds/{bed_id}/events/history -> 該床已處理事件紀錄，resolved_at 新到舊（寫進 event_history.json，重啟即清空）
 #   POST /api/beds/{bed_id}/possible-fall -> Board 端回報疑似跌倒，backend 不重新驗證，直接建立/更新事件
 #   POST /api/events/{event_id}/resolve -> 護理站標記事件已處理，body 附病例紀錄（idempotent，寫進 case_reports.json）
-#   GET  /api/reports/export            -> 把 case_reports.json 整理成 PDF 下載，成功後清空 case_reports.json（摘要目前是假資料，待接 LLM）
+#   /api/beds/{bed_id}/handover-*       -> AI 草稿、人工確認送出與交班紀錄（handover.py）
 #
 # 影像走另一條獨立的全域 pipe（不分 bed_id，demo 只有一床有真的攝影機）：
 #   WS   /ws/camera/publish  -> board 端上傳 JPEG
@@ -20,11 +20,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from app import report_generator, simulator, store
+from app import simulator, store
+from app.handover import router as handover_router
 from app.camera_stream import CameraStream
 from app.camera_stream import router as camera_router
 from app.schemas import (
@@ -60,18 +61,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(camera_router)
+app.include_router(handover_router)
 
 app.add_middleware(
     CORSMiddleware,
-<<<<<<< Updated upstream
-    # 用 regex 而不是寫死 port：Vite dev server 常因為 port 被佔用換 port（5173/5174/...），
-    # 寫死單一 port 每次都要手動改，改用 regex 涵蓋 localhost/127.0.0.1/10.28.50.x 的任何 port。
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\.28\.50\.\d{1,3}):\d+",
-=======
     # 用 regex 涵蓋常見區網 IP 段（192.168.x.x / 10.x.x.x / 172.16-31.x.x）+ localhost，
     # 這樣現場筆電換一次 IP 也不用回來改 CORS 設定，只要前端跟後端還在同一個區網就會通。
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$",
->>>>>>> Stashed changes
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -132,18 +128,6 @@ def resolve_event(event_id: str, report: ResolveReportRequest):
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
-
-
-@app.get("/api/reports/export")
-def export_reports():
-    reports = store.get_case_reports()
-    pdf_bytes = report_generator.generate_report_pdf(reports)
-    store.clear_case_reports()
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=ward-monitor-report.pdf"},
-    )
 
 
 @app.websocket("/ws/overview")

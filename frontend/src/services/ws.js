@@ -132,15 +132,16 @@ export async function fetchEventHistory(bedId) {
   return res.json();
 }
 
-// GET /api/reports/export -> 把累積的病例紀錄整理成 PDF，觸發瀏覽器下載
-export async function exportReports() {
-  const res = await fetch(`${API_BASE}/api/reports/export`);
-  if (!res.ok) throw new Error(`exportReports failed: ${res.status}`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "ward-monitor-report.pdf";
-  link.click();
-  URL.revokeObjectURL(url);
+// Handover generation and human-reviewed submission are separate requests.
+export async function handoverRequest(bedId, resource, body) {
+  const res = await fetch(`${API_BASE}/api/beds/${encodeURIComponent(bedId)}/${resource}`, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(typeof data.detail === "string" ? data.detail : "操作失敗，請確認資料與服務連線後重試");
+  }
+  return res.json();
 }
