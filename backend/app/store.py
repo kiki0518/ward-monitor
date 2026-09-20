@@ -63,6 +63,7 @@ def _load_beds_from_csv() -> list[BedInfo]:
                 gender=_GENDER_FROM_CSV[row["gender"]],
                 age=int(row["age"]),
                 diagnosis=row["diagnosis"],
+                assigned_nurse=row.get("assigned_nurse") or None,
             )
             for row in csv.DictReader(f)
         ]
@@ -148,6 +149,11 @@ def seed_demo_data() -> None:
 
 def get_all_beds() -> list[BedInfo]:
     return list(_beds.values())
+
+
+def get_all_nurses() -> list[str]:
+    """從床位名冊的 assigned_nurse 欄位去重取得護理師名單，給前端選擇自己身分用。"""
+    return sorted({bed.assigned_nurse for bed in _beds.values() if bed.assigned_nurse})
 
 
 def bed_exists(bed_id: str) -> bool:

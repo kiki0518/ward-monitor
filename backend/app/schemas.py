@@ -56,6 +56,7 @@ class BedInfo(BaseModel):
     gender: Gender
     age: int
     diagnosis: str
+    assigned_nurse: Optional[str] = None
 
 
 class OverviewUpdate(BaseModel):
