@@ -62,9 +62,15 @@ app.include_router(camera_router)
 
 app.add_middleware(
     CORSMiddleware,
+<<<<<<< Updated upstream
     # 用 regex 而不是寫死 port：Vite dev server 常因為 port 被佔用換 port（5173/5174/...），
     # 寫死單一 port 每次都要手動改，改用 regex 涵蓋 localhost/127.0.0.1/10.28.50.x 的任何 port。
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\.28\.50\.\d{1,3}):\d+",
+=======
+    # 用 regex 涵蓋常見區網 IP 段（192.168.x.x / 10.x.x.x / 172.16-31.x.x）+ localhost，
+    # 這樣現場筆電換一次 IP 也不用回來改 CORS 設定，只要前端跟後端還在同一個區網就會通。
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$",
+>>>>>>> Stashed changes
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -78,6 +84,11 @@ def health_check():
 @app.get("/api/beds", response_model=list[BedInfo])
 def list_beds():
     return store.get_all_beds()
+
+
+@app.get("/api/nurses", response_model=list[str])
+def list_nurses():
+    return store.get_all_nurses()
 
 
 @app.get("/api/beds/{bed_id}/events", response_model=list[WardAgentOutput])

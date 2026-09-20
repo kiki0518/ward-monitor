@@ -1,15 +1,24 @@
 // 跟 B3 對接：WebSocket / REST 連線邏輯
 // 資料格式規範請參考根目錄 API_CONTRACT.md（前後端契約，F1/F2 都要跟這份對齊）
 
-// 同一個後端負責 beds/overview/room/events 與 camera 串流
-const API_BASE = "http://127.0.0.1:8000";
-const WS_BASE = "ws://127.0.0.1:8000";
+// 本機後端：負責 beds/overview/room/events 全部邏輯
+// 用 window.location.hostname 而不是寫死 127.0.0.1，這樣同一份前端不管是在
+// 開發機用 localhost 開，還是護理站/護士工作機用「筆電的區網 IP」開，都能自動打對後端
+// （前提：backend 用 --host 0.0.0.0 啟動，且該 IP 有在 main.py 的 CORS allow_origins 裡）
+const API_BASE = `http://${window.location.hostname}:8000`;
+const WS_BASE = `ws://${window.location.hostname}:8000`;
 
 
 // GET /api/beds -> list[BedInfo]，進總覽頁前先拉一次床位/病患靜態名冊
 export async function fetchBeds() {
   const res = await fetch(`${API_BASE}/api/beds`);
   if (!res.ok) throw new Error(`fetchBeds failed: ${res.status}`);
+  return res.json();
+}
+// GET /api/nurses -> string[]，護理師身分選單用（去重排序過的 assigned_nurse 名單）
+export async function fetchNurses() {
+  const res = await fetch(`${API_BASE}/api/nurses`);
+  if (!res.ok) throw new Error(`fetchNurses failed: ${res.status}`);
   return res.json();
 }
 
@@ -20,7 +29,6 @@ export async function fetchBedEvents(bedId) {
   if (!res.ok) throw new Error(`fetchBedEvents failed: ${res.status}`);
   return res.json();
 }
-
 // WS /ws/overview -> 持續推送 list[OverviewUpdate]（全床摘要）
 // 回傳可呼叫 close() 的物件，供元件在 useEffect cleanup 時關閉連線
 export function connectOverviewSocket(onMessage, onError) {

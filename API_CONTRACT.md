@@ -52,6 +52,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | 方法 | 路徑 | 用途 |
 |---|---|---|
 | GET | `/api/beds` | 一次性拉全部床位/病患靜態名冊 |
+| GET | `/api/nurses` | 護理師名單（`assigned_nurse` 去重排序），給護理師身分選單用 |
 | WS | `/ws/overview` | 全床摘要，持續推送（總覽頁用） |
 | WS | `/ws/room/{bed_id}`（`?role=viewer`，預設值） | 單床 state（vitals+active_events+current_posture），詳細頁用，進頁才連線 |
 | WS | `/ws/room/{bed_id}?role=board` | Board 端連線，上傳 `current_posture`（見下方 `BoardPostureUpdate`） |
@@ -72,7 +73,8 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
   "patient_name": "王建國",
   "gender": "male",
   "age": 78,
-  "diagnosis": "腦中風後遺症"
+  "diagnosis": "腦中風後遺症",
+  "assigned_nurse": "王美玲"
 }
 ```
 
@@ -83,6 +85,7 @@ Board 攝影機/JPEG ─────▶ /ws/camera/publish ──▶ Backend（c
 | `gender` | enum | `"male"` / `"female"` |
 | `age` | int | 病患年齡 |
 | `diagnosis` | string | 病因/診斷，人類可讀，例如「腦中風後遺症」「髖關節骨折術後」，demo 用固定假資料，見 `backend/app/data/beds.csv` |
+| `assigned_nurse` | string \| null | 負責這張床的護理師姓名，demo 用固定假資料（一層樓一位護理師），見 `backend/app/data/beds.csv`；沒有指派時為 `null` |
 
 ### `OverviewUpdate`（`/ws/overview` 推送）
 ```json
